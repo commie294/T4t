@@ -1,5 +1,6 @@
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from telegram.ext import (
+    Application,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
@@ -14,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN_MEET")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID") # Добавьте ID чата администратора в .env
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 if not BOT_TOKEN or not ADMIN_CHAT_ID:
     print("Ошибка: Не найден BOT_TOKEN_MEET или ADMIN_CHAT_ID.")
     exit()
@@ -22,10 +23,35 @@ if not BOT_TOKEN or not ADMIN_CHAT_ID:
 DATABASE_NAME = 't4t_meet.db'
 
 REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO = range(7)
-REPORT, GET_REPORT_REASON = range(7, 9) # Добавляем состояния для жалоб
+REPORT, GET_REPORT_REASON = range(7, 9)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    rules = (
+        "Добро пожаловать в T4t Meet!\n\n"
+        "Пожалуйста, ознакомьтесь с нашими правилами:\n"
+        "1. Будьте уважительны к другим участникам.\n"
+        "2. Запрещены оскорбления, дискриминация и нетерпимость. Анкеты цисгендеров будут блокироваться.\n"
+        "3. Не публикуйте контент 18+ и другой неприемлемый материал.\n"
+        "4. Соблюдайте конфиденциальность личной информации других пользователей.\n"
+        "5. Администрация оставляет за собой право удалять профили и блокировать пользователей за нарушения.\n\n"
+        "Основные команды:\n"
+        "/register - Зарегистрировать свой профиль.\n"
+        "/browse - Просмотр анкет других пользователей.\n"
+        "/matches - Просмотр ваших мэтчей.\n"
+        "/profile - Просмотр вашего профиля (реализуем позже).\n"
+    )
+
+    keyboard = [
+        [KeyboardButton("/register")],
+        [KeyboardButton("/browse"), KeyboardButton("/matches")],
+        [KeyboardButton("/profile")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    await update.message.reply_text(rules, reply_markup=reply_markup)
 
 async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Добро пожаловать в T4t Meet! Давайте создадим ваш профиль. Как вас будут видеть другие пользователи?")
+    await update.message.reply_text("Как вас будут видеть другие пользователи?")
     return GET_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -182,7 +208,6 @@ async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         await update.message.reply_text("Ваша жалоба принята и будет рассмотрена.")
 
-        # Уведомление администратора
         if ADMIN_CHAT_ID:
             try:
                 user_info_reporter = get_user_info(reporter_user_id)
@@ -272,18 +297,15 @@ def setup_report_conversation():
         fallbacks=[],
     )
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Привет! Используйте команду /register для регистрации.")
-
-def main() -> None:
+def main() -> None
     application = Application.builder().token(BOT_TOKEN).build()
     reg_handler = setup_registration_conversation()
     browse_handler = setup_browsing(application)
     matches_handler = setup_matches(application)
     report_handler = setup_report_conversation()
 
-    application.add_handler(reg_handler)
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(reg_handler)
     application.add_handler(browse_handler)
     application.add_handler(matches_handler)
     application.add_handler(report_handler)
@@ -291,7 +313,7 @@ def main() -> None:
     application.run_polling()
 
 if __name__ == "__main__":
-    # Убедитесь, что файл базы данных существует
+    # Убедитесь, что файл базы данных существует и таблицы созданы
     if not os.path.exists(DATABASE_NAME):
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
