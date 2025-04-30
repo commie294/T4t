@@ -278,15 +278,19 @@ def setup_registration_conversation():
         fallbacks=[],
     )
 
-def setup_browsing(application):
-    application.add_handler(CommandHandler("browse", browse_profiles))
-    application.add_handler(CallbackQueryHandler(like_profile, pattern='^like_'))
-    application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
-    application.add_handler(CallbackQueryHandler(report_profile, pattern='^report_'))
+def setup_browsing():
+    return [
+        CommandHandler("browse", browse_profiles),
+        CallbackQueryHandler(like_profile, pattern='^like_'),
+        CallbackQueryHandler(next_profile, pattern='^next$'),
+        CallbackQueryHandler(report_profile, pattern='^report_'),
+    ]
 
-def setup_matches(application):
-    application.add_handler(CommandHandler("matches", show_matches))
-    application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
+def setup_matches():
+    return [
+        CommandHandler("matches", show_matches),
+        CallbackQueryHandler(start_chat, pattern='^chat_'),
+    ]
 
 def setup_report_conversation():
     return ConversationHandler(
@@ -300,14 +304,14 @@ def setup_report_conversation():
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
     reg_handler = setup_registration_conversation()
-    browse_handler = setup_browsing(application)
-    matches_handler = setup_matches(application)
+    browse_handlers = setup_browsing()
+    matches_handlers = setup_matches()
     report_handler = setup_report_conversation()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(reg_handler)
-    application.add_handler(browse_handler)
-    application.add_handler(matches_handler)
+    application.add_handlers(browse_handlers)
+    application.add_handlers(matches_handlers)
     application.add_handler(report_handler)
 
     application.run_polling()
