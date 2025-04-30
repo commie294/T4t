@@ -62,17 +62,21 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         age = int(update.message.text)
+        print(f"Введенный возраст: {age}")  # Отладочный вывод
         if 16 <= age <= 100:
             context.user_data['age'] = age
             keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text("Кем вы себя идентифицируете?", reply_markup=reply_markup)
+            print(f"Возраст корректный, возвращаю состояние: {GET_GENDER}")  # Отладочный вывод
             return GET_GENDER
         else:
             await update.message.reply_text("Пожалуйста, введите корректный возраст (от 16 до 100 лет).")
+            print(f"Возраст некорректный, возвращаю состояние: {GET_AGE}")  # Отладочный вывод
             return GET_AGE
     except ValueError:
         await update.message.reply_text("Пожалуйста, введите ваш возраст цифрами.")
+        print(f"Ошибка ValueError, возвращаю состояние: {GET_AGE}")  # Отладочный вывод
         return GET_AGE
 
 async def get_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
