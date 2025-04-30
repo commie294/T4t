@@ -1,3 +1,7 @@
+import sqlite3
+import random
+import os
+from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from telegram.ext import (
     Application,
@@ -8,10 +12,6 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
-import sqlite3
-import random
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN_MEET")
