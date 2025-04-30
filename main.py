@@ -297,7 +297,7 @@ def setup_report_conversation():
         fallbacks=[],
     )
 
-def main() -> None
+def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
     reg_handler = setup_registration_conversation()
     browse_handler = setup_browsing(application)
