@@ -37,9 +37,22 @@ def create_tables():
         )
     """)
 
+    # Создание таблицы reports
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reporter_user_id INTEGER NOT NULL,
+            reported_user_id INTEGER NOT NULL,
+            reason TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (reporter_user_id) REFERENCES users(user_id),
+            FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
 if __name__ == '__main__':
     create_tables()
-    print(f"Таблицы 'users' и 'matches' успешно созданы (или уже существовали) в файле '{DATABASE_NAME}'.")
+    print(f"Таблицы 'users', 'matches' и 'reports' успешно созданы (или уже существовали) в файле '{DATABASE_NAME}'.")
