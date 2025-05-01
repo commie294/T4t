@@ -1,9 +1,8 @@
 import logging
 import sqlite3
-import random
 import os
 from dotenv import load_dotenv
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -14,10 +13,8 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-# === НАЧАЛО КОДА ЛОГИРОВАНИЯ ===
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-# === КОНЕЦ КОДА ЛОГИРОВАНИЯ ===
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN_MEET")
@@ -28,7 +25,8 @@ if not BOT_TOKEN or not ADMIN_CHAT_ID:
 
 DATABASE_NAME = 't4t_meet.db'
 
-REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO, EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO = range(14)
+REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO = range(7)
+EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO = range(7, 14)
 REPORT, GET_REPORT_REASON = range(14, 16)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -69,21 +67,17 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         age = int(update.message.text)
-        print(f"Введенный возраст: {age}")  # Отладочный вывод
         if 16 <= age <= 100:
             context.user_data['age'] = age
             keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text("Кем вы себя идентифицируете?", reply_markup=reply_markup)
-            print(f"Возраст корректный, возвращаю состояние: {GET_GENDER}")  # Отладочный вывод
             return GET_GENDER
         else:
             await update.message.reply_text("Пожалуйста, введите корректный возраст (от 16 до 100 лет).")
-            print(f"Возраст некорректный, возвращаю состояние: {GET_AGE}")  # Отладочный вывод
             return GET_AGE
     except ValueError:
         await update.message.reply_text("Пожалуйста, введите ваш возраст цифрами.")
-        print(f"Ошибка ValueError, возвращаю состояние: {GET_AGE}")  # Отладочный вывод
         return GET_AGE
 
 async def get_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -134,8 +128,11 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if profile:
         name, age, gender, bio, photo_id = profile
-        media = InputMediaPhoto(media=photo_id, caption=f"Ваш профиль:\nИмя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}")
-        await context.bot.send_media_group(chat_id=update.message.chat_id, media=[media])
+        await context.bot.send_photo(
+            chat_id=update.message.chat_id,
+            photo=photo_id,
+            caption=f"Ваш профиль:\nИмя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}"
+        )
     else:
         await update.message.reply_text("Ваш профиль не найден. Пожалуйста, зарегистрируйтесь.")
 
@@ -261,45 +258,35 @@ async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return ConversationHandler.END
 
 async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.info(f"Вызвана функция browse_profiles для пользователя {update.message.from_user.id}")
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    logger.debug("Подключились к базе данных")
     try:
         cursor.execute("SELECT user_id, name, age, gender, bio, photo_id FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT 1", (user_id,))
         profile = cursor.fetchone()
-        logger.debug(f"Результат запроса к базе данных: {profile}")
-        conn.close()
-        logger.debug("Закрыли соединение с базой данных")
 
         if profile:
             user_id_browse, name, age, gender, bio, photo_id = profile
-            logger.info(f"Нашли профиль для просмотра: ID={user_id_browse}, Имя={name}, Возраст={age}, Пол={gender}, Photo ID={photo_id}")
             keyboard = [
                 [InlineKeyboardButton("👍 Лайк", callback_data=f'like_{user_id_browse}')],
                 [InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
                 [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{user_id_browse}')],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            caption = f"Имя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}"
-            logger.debug(f"Формируем InputMediaPhoto с photo_id: '{photo_id}' и caption: '{caption}'")
-            media = InputMediaPhoto(media=photo_id, caption=caption)
-            try:
-                await context.bot.send_media_group(chat_id=update.message.chat_id, media=[media], reply_markup=reply_markup)
-                logger.info(f"Успешно отправили анкету пользователя ID {user_id_browse} пользователю {user_id}")
-            except Exception as e:
-                logger.error(f"Ошибка ПРИ ОТПРАВКЕ МЕДИА-ГРУППЫ: {e}", exc_info=True)
-                await update.message.reply_text("Произошла ошибка при отправке анкеты.")
+            
+            await context.bot.send_photo(
+                chat_id=update.message.chat_id,
+                photo=photo_id,
+                caption=f"Имя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}",
+                reply_markup=reply_markup
+            )
         else:
             await update.message.reply_text("Пока нет доступных анкет для просмотра.")
-            logger.info("Нет доступных анкет для просмотра.")
-    except sqlite3.Error as e:
-        logger.error(f"Ошибка БАЗЫ ДАННЫХ при browse_profiles: {e}", exc_info=True)
-        await update.message.reply_text("Произошла ошибка при просмотре анкет.")
+    except Exception as e:
+        logger.error(f"Ошибка в browse_profiles: {e}")
+        await update.message.reply_text("Произошла ошибка при загрузке анкеты.")
     finally:
-        if 'conn' in locals() and conn:
-            conn.close()
+        conn.close()
 
 async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -318,22 +305,25 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             cursor.execute("UPDATE matches SET is_match = TRUE WHERE user_id_1 = ? AND user_id_2 = ?", (liking_user_id, liked_user_id))
             cursor.execute("UPDATE matches SET is_match = TRUE WHERE user_id_1 = ? AND user_id_2 = ?", (liked_user_id, liking_user_id))
             conn.commit()
-            user_info_liked = get_user_info(liked_user_id)
-            user_info_liking = get_user_info(liking_user_id)
+            cursor.execute("SELECT name FROM users WHERE user_id = ?", (liked_user_id,))
+            user_info_liked = cursor.fetchone()
+            cursor.execute("SELECT name FROM users WHERE user_id = ?", (liking_user_id,))
+            user_info_liking = cursor.fetchone()
             if user_info_liked and user_info_liking:
                 await context.bot.send_message(chat_id=liked_user_id, text=f"У вас мэтч с {user_info_liking[0]}!")
                 await context.bot.send_message(chat_id=liking_user_id, text=f"У вас мэтч с {user_info_liked[0]}!")
 
-        keyboard = [[InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
-                    [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{liked_user_id}')]]
+        keyboard = [
+            [InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
+            [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{liked_user_id}')]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_caption(caption=query.message.caption_text + "\n\n❤️ Вы поставили лайк!", reply_markup=reply_markup)
-    except sqlite3.Error as e:
-        print(f"Ошибка базы данных при like_profile: {e}")
+        await query.edit_message_caption(caption=query.message.caption + "\n\n❤️ Вы поставили лайк!", reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Ошибка в like_profile: {e}")
         await query.answer(text="Произошла ошибка при обработке лайка.", show_alert=True)
     finally:
-        if conn:
-            conn.close()
+        conn.close()
 
 async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -342,28 +332,29 @@ async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT * FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT 1", (user_id,))
+        cursor.execute("SELECT user_id, name, age, gender, bio, photo_id FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT 1", (user_id,))
         profile = cursor.fetchone()
-        conn.close()
 
         if profile:
-            user_id_browse, name, age, gender, bio, photo_id, _, _ = profile
+            user_id_browse, name, age, gender, bio, photo_id = profile
             keyboard = [
                 [InlineKeyboardButton("👍 Лайк", callback_data=f'like_{user_id_browse}')],
                 [InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
                 [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{user_id_browse}')],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            media = InputMediaPhoto(media=photo_id, caption=f"Имя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}")
-            await context.bot.edit_message_media(media=media, chat_id=query.message.chat_id, message_id=query.message.message_id, reply_markup=reply_markup)
+            
+            await query.edit_message_media(
+                media=InputMediaPhoto(media=photo_id, caption=f"Имя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}"),
+                reply_markup=reply_markup
+            )
         else:
-            await query.edit_message_text("Пока нет доступных анкет для просмотра.", reply_markup=None)
-    except sqlite3.Error as e:
-        print(f"Ошибка базы данных при next_profile: {e}")
+            await query.edit_message_text("Пока нет доступных анкет для просмотра.")
+    except Exception as e:
+        logger.error(f"Ошибка в next_profile: {e}")
         await query.answer(text="Произошла ошибка при загрузке следующей анкеты.", show_alert=True)
     finally:
-        if conn:
-            conn.close()
+        conn.close()
 
 async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -388,25 +379,22 @@ async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await update.message.reply_text("Ваша жалоба принята и будет рассмотрена.")
 
             if ADMIN_CHAT_ID:
-                try:
-                    user_info_reporter = get_user_info(reporter_user_id)
-                    user_info_reported = get_user_info(reported_user_id)
-                    if user_info_reporter and user_info_reported:
-                        await context.bot.send_message(
-                            chat_id=ADMIN_CHAT_ID,
-                            text=f"Новая жалоба:\nОт пользователя ID {reporter_user_id} ({user_info_reporter[0]})\nНа пользователя ID {reported_user_id} ({user_info_reported[0]})\nПричина: {reason}"
-                        )
-                except Exception as e:
-                    print(f"Ошибка при отправке уведомления администратору: {e}")
-
+                cursor.execute("SELECT name FROM users WHERE user_id = ?", (reporter_user_id,))
+                user_info_reporter = cursor.fetchone()
+                cursor.execute("SELECT name FROM users WHERE user_id = ?", (reported_user_id,))
+                user_info_reported = cursor.fetchone()
+                if user_info_reporter and user_info_reported:
+                    await context.bot.send_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        text=f"Новая жалоба:\nОт пользователя ID {reporter_user_id} ({user_info_reporter[0]})\nНа пользователя ID {reported_user_id} ({user_info_reported[0]})\nПричина: {reason}"
+                    )
             return ConversationHandler.END
-        except sqlite3.Error as e:
-            print(f"Ошибка базы данных при get_report_reason: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка в get_report_reason: {e}")
             await update.message.reply_text("Произошла ошибка при обработке жалобы.")
             return ConversationHandler.END
         finally:
-            if conn:
-                conn.close()
+            conn.close()
     else:
         await update.message.reply_text("Произошла ошибка при обработке жалобы. Пожалуйста, попробуйте еще раз.")
         return ConversationHandler.END
@@ -423,7 +411,6 @@ async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             WHERE m.is_match = TRUE AND (m.user_id_1 = ? OR m.user_id_2 = ?)
         """, (user_id, user_id, user_id))
         matches = cursor.fetchall()
-        conn.close()
 
         if matches:
             message = "Ваши мэтчи:\n"
@@ -435,12 +422,11 @@ async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await update.message.reply_text(message, reply_markup=reply_markup)
         else:
             await update.message.reply_text("У вас пока нет мэтчей.")
-    except sqlite3.Error as e:
-        print(f"Ошибка базы данных при show_matches: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка в show_matches: {e}")
         await update.message.reply_text("Произошла ошибка при загрузке ваших мэтчей.")
     finally:
-        if conn:
-            conn.close()
+        conn.close()
 
 async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -448,25 +434,10 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     matched_user_id = int(query.data.split('_')[1])
     await query.message.reply_text(f"Вы выбрали пользователя с ID {matched_user_id}. Вы можете попробовать найти его в Telegram и написать ему.")
 
-def get_user_info(user_id: int) -> tuple or None:
-    conn = sqlite3.connect(DATABASE_NAME)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT name FROM users WHERE user_id = ?", (user_id,))
-        user_info = cursor.fetchone()
-        return user_info
-    except sqlite3.Error as e:
-        print(f"Ошибка базы данных при get_user_info: {e}")
-        return None
-    finally:
-        if conn:
-            conn.close()
-
 def setup_registration_conversation():
     return ConversationHandler(
         entry_points=[CommandHandler("register", register_start)],
         states={
-            REGISTER: [MessageHandler(filters.COMMAND, register_start)],
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             GET_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_age)],
             GET_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender)],
@@ -476,11 +447,6 @@ def setup_registration_conversation():
         },
         fallbacks=[],
     )
-
-def setup_profile_commands():
-    return [
-        CommandHandler("profile", show_profile),
-    ]
 
 def setup_edit_profile_conversation():
     return ConversationHandler(
@@ -504,20 +470,6 @@ def setup_edit_profile_conversation():
         fallbacks=[MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_edit)],
     )
 
-def setup_browsing():
-    return [
-        CommandHandler("browse", browse_profiles),
-        CallbackQueryHandler(like_profile, pattern='^like_'),
-        CallbackQueryHandler(next_profile, pattern='^next$'),
-        CallbackQueryHandler(report_profile, pattern='^report_'),
-    ]
-
-def setup_matches():
-    return [
-        CommandHandler("matches", show_matches),
-        CallbackQueryHandler(start_chat, pattern='^chat_'),
-    ]
-
 def setup_report_conversation():
     return ConversationHandler(
         entry_points=[CallbackQueryHandler(report_profile, pattern='^report_')],
@@ -530,31 +482,17 @@ def setup_report_conversation():
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
 
-    async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        logger.info(f"Received message: {update.message}")
-
-    log_handler = MessageHandler(filters.ALL, log_message)
-    application.add_handler(log_handler, group=-1) # Добавляем логгер как можно раньше
-
-    reg_handler = setup_registration_conversation()
-    profile_handlers = setup_profile_commands()
-    edit_profile_handler = setup_edit_profile_conversation()
-    browse_handlers = setup_browsing()
-    matches_handlers = setup_matches()
-    report_handler = setup_report_conversation()
-
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(reg_handler)
-    application.add_handlers(profile_handlers)
-    application.add_handler(edit_profile_handler)
-    application.add_handlers(browse_handlers)
-    application.add_handlers(matches_handlers)
-    application.add_handler(report_handler)
+    application.add_handler(setup_registration_conversation())
+    application.add_handler(CommandHandler("profile", show_profile))
+    application.add_handler(setup_edit_profile_conversation())
+    application.add_handler(CommandHandler("browse", browse_profiles))
+    application.add_handler(CallbackQueryHandler(like_profile, pattern='^like_'))
+    application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
+    application.add_handler(setup_report_conversation())
+    application.add_handler(CommandHandler("matches", show_matches))
+    application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
 
-    application.run_polling()
-
-if __name__ == "__main__":
-    # Убедитесь, что файл базы данных существует и таблицы созданы
     if not os.path.exists(DATABASE_NAME):
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
@@ -595,5 +533,7 @@ if __name__ == "__main__":
         conn.commit()
         conn.close()
 
-    main()
+    application.run_polling()
 
+if __name__ == "__main__":
+    main()
