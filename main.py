@@ -279,7 +279,7 @@ def setup_registration_conversation():
         states={
             REGISTER: [MessageHandler(filters.COMMAND, register_start)],
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            GET_AGE: [MessageHandler(filters.TEXT & ~filters.TEXT, get_age)],
+            GET_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_age)],
                         GET_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender)],
             GET_GENDER_OTHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender_other)],
             GET_PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
@@ -380,3 +380,4 @@ if __name__ == "__main__":
         conn.close()
 
     main()
+
