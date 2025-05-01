@@ -16,8 +16,8 @@ def create_tables():
             photo_id TEXT NOT NULL,
             is_adult BOOLEAN DEFAULT FALSE,
             age_preference TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            city TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
@@ -47,18 +47,20 @@ def create_tables():
         )
     """)
 
-    cursor.execute("PRAGMA table_info(users)")
-    columns = [column[1] for column in cursor.fetchall()]
-    
-    if 'is_adult' not in columns:
-        cursor.execute("ALTER TABLE users ADD COLUMN is_adult BOOLEAN DEFAULT FALSE")
-    
-    if 'age_preference' not in columns:
-        cursor.execute("ALTER TABLE users ADD COLUMN age_preference TEXT")
-    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS viewed_profiles (
+            viewer_id INTEGER NOT NULL,
+            viewed_id INTEGER NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (viewer_id) REFERENCES users(user_id),
+            FOREIGN KEY (viewed_id) REFERENCES users(user_id),
+            PRIMARY KEY (viewer_id, viewed_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
 if __name__ == '__main__':
     create_tables()
-    print(f"Таблицы 'users', 'matches' и 'reports' успешно созданы (или уже существовали) в файле '{DATABASE_NAME}'.")
+    print(f"Таблицы 'users', 'matches', 'reports' и 'viewed_profiles' успешно созданы в файле '{DATABASE_NAME}'.")
