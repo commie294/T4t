@@ -261,7 +261,6 @@ async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return ConversationHandler.END
 
 async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"Вызвана функция browse_profiles для пользователя {update.message.from_user.id}")
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
