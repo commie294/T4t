@@ -28,8 +28,8 @@ if not BOT_TOKEN or not ADMIN_CHAT_ID:
 
 DATABASE_NAME = 't4t_meet.db'
 
-REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO = range(7)
-REPORT, GET_REPORT_REASON = range(7, 9)
+REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO, EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO = range(14)
+REPORT, GET_REPORT_REASON = range(14, 16)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     rules = (
@@ -44,20 +44,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/register - Зарегистрировать свой профиль.\n"
         "/browse - Просмотр анкет других пользователей.\n"
         "/matches - Просмотр ваших мэтчей.\n"
-        "/profile - Просмотр вашего профиля (реализуем позже).\n"
+        "/profile - Просмотр вашего профиля.\n"
+        "/edit_profile - Редактировать свой профиль.\n"
     )
 
     keyboard = [
         [KeyboardButton("/register")],
         [KeyboardButton("/browse"), KeyboardButton("/matches")],
-        [KeyboardButton("/profile")]
+        [KeyboardButton("/profile"), KeyboardButton("/edit_profile")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     await update.message.reply_text(rules, reply_markup=reply_markup)
 
 async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Как вас будут видеть другие пользователи?")
+    await update.message.reply_text("Ваше имя: как вас будут видеть другие пользователи?")
     return GET_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -123,6 +124,142 @@ async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     return ConversationHandler.END
 
+async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.message.from_user.id
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name, age, gender, bio, photo_id FROM users WHERE user_id = ?", (user_id,))
+    profile = cursor.fetchone()
+    conn.close()
+
+    if profile:
+        name, age, gender, bio, photo_id = profile
+        media = InputMediaPhoto(media=photo_id, caption=f"Ваш профиль:\nИмя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}")
+        await context.bot.send_media_group(chat_id=update.message.chat_id, media=[media])
+    else:
+        await update.message.reply_text("Ваш профиль не найден. Пожалуйста, зарегистрируйтесь.")
+
+async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [
+        ["Изменить имя"],
+        ["Изменить возраст"],
+        ["Изменить пол"],
+        ["Изменить фото"],
+        ["Изменить био"],
+        ["Отмена"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("Что вы хотите изменить в своем профиле?", reply_markup=reply_markup)
+    return EDIT_PROFILE
+
+async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Пожалуйста, введите новое имя.")
+    return EDIT_NAME
+
+async def update_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_name = update.message.text
+    user_id = update.message.from_user.id
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET name = ? WHERE user_id = ?", (new_name, user_id))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(f"Ваше имя обновлено на '{new_name}'.")
+    return ConversationHandler.END
+
+async def edit_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Пожалуйста, введите новый возраст.")
+    return EDIT_AGE
+
+async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        new_age = int(update.message.text)
+        if 16 <= new_age <= 100:
+            user_id = update.message.from_user.id
+            conn = sqlite3.connect(DATABASE_NAME)
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET age = ? WHERE user_id = ?", (new_age, user_id))
+            conn.commit()
+            conn.close()
+            await update.message.reply_text(f"Ваш возраст обновлен на '{new_age}'.")
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text("Пожалуйста, введите корректный возраст (от 16 до 100 лет).")
+            return EDIT_AGE
+    except ValueError:
+        await update.message.reply_text("Пожалуйста, введите возраст цифрами.")
+        return EDIT_AGE
+
+async def edit_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Пожалуйста, выберите новый пол.", reply_markup=reply_markup)
+    return EDIT_GENDER
+
+async def update_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_gender = update.message.text
+    if new_gender == "Другое":
+        await update.message.reply_text("Пожалуйста, уточните вашу гендерную идентичность.")
+        return EDIT_GENDER_OTHER
+    user_id = update.message.from_user.id
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(f"Ваш пол обновлен на '{new_gender}'.")
+    return ConversationHandler.END
+
+async def edit_gender_other_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_gender = update.message.text
+    user_id = update.message.from_user.id
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(f"Ваш пол обновлен на '{new_gender}'.")
+    return ConversationHandler.END
+
+async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Пожалуйста, отправьте новую фотографию профиля.")
+    return EDIT_PHOTO
+
+async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.photo:
+        photo = update.message.photo[-1]
+        new_photo_id = photo.file_id
+        user_id = update.message.from_user.id
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET photo_id = ? WHERE user_id = ?", (new_photo_id, user_id))
+        conn.commit()
+        conn.close()
+        await update.message.reply_text("Ваша фотография профиля обновлена.")
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("Пожалуйста, отправьте фотографию.")
+        return EDIT_PHOTO
+
+async def edit_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Пожалуйста, введите новое описание профиля.")
+    return EDIT_BIO
+
+async def update_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_bio = update.message.text
+    user_id = update.message.from_user.id
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (new_bio, user_id))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text("Ваше описание профиля обновлено.")
+    return ConversationHandler.END
+
+async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Редактирование профиля отменено.")
+    return ConversationHandler.END
+
 async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
@@ -151,7 +288,7 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     liking_user_id = query.from_user.id
 
     conn = sqlite3.connect(DATABASE_NAME)
-    cursor = conn.cursor()
+        cursor = conn.cursor()
     cursor.execute("INSERT INTO matches (user_id_1, user_id_2) VALUES (?, ?)", (liking_user_id, liked_user_id))
     conn.commit()
 
@@ -280,12 +417,39 @@ def setup_registration_conversation():
             REGISTER: [MessageHandler(filters.COMMAND, register_start)],
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             GET_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_age)],
-                        GET_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender)],
+            GET_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender)],
             GET_GENDER_OTHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender_other)],
             GET_PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
             GET_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_bio)],
         },
         fallbacks=[],
+    )
+
+def setup_profile_commands():
+    return [
+        CommandHandler("profile", show_profile),
+    ]
+
+def setup_edit_profile_conversation():
+    return ConversationHandler(
+        entry_points=[CommandHandler("edit_profile", edit_profile)],
+        states={
+            EDIT_PROFILE: [
+                MessageHandler(filters.Regex("^Изменить имя$"), edit_name),
+                MessageHandler(filters.Regex("^Изменить возраст$"), edit_age),
+                MessageHandler(filters.Regex("^Изменить пол$"), edit_gender),
+                MessageHandler(filters.Regex("^Изменить фото$"), edit_photo),
+                MessageHandler(filters.Regex("^Изменить био$"), edit_bio),
+                MessageHandler(filters.Regex("^Отмена$"), cancel_edit),
+            ],
+            EDIT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_name)],
+            EDIT_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_age)],
+            EDIT_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_gender)],
+            EDIT_GENDER_OTHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_gender_other_input)],
+            EDIT_PHOTO: [MessageHandler(filters.PHOTO, update_photo)],
+            EDIT_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_bio)],
+        },
+        fallbacks=[MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_edit)],
     )
 
 def setup_browsing():
@@ -321,12 +485,16 @@ def main() -> None:
     application.add_handler(log_handler, group=-1) # Добавляем логгер как можно раньше
 
     reg_handler = setup_registration_conversation()
+    profile_handlers = setup_profile_commands()
+    edit_profile_handler = setup_edit_profile_conversation()
     browse_handlers = setup_browsing()
     matches_handlers = setup_matches()
     report_handler = setup_report_conversation()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(reg_handler)
+    application.add_handlers(profile_handlers)
+    application.add_handler(edit_profile_handler)
     application.add_handlers(browse_handlers)
     application.add_handlers(matches_handlers)
     application.add_handler(report_handler)
@@ -345,10 +513,6 @@ if __name__ == "__main__":
                 age INTEGER NOT NULL,
                 gender TEXT NOT NULL,
                 bio TEXT,
-                interests TEXT,
-                seeking_gender TEXT,
-                seeking_age_min INTEGER,
-                seeking_age_max INTEGER,
                 photo_id TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
