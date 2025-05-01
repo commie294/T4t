@@ -46,7 +46,6 @@ DATABASE_NAME = 't4t_meet.db'
     REPORT, GET_REPORT_REASON
 ) = range(18)
 
-# --- Обработчики команд ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start"""
     rules = (
@@ -203,9 +202,14 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT age FROM users WHERE user_id = ?", (user_id,))
-    age = cursor.fetchone()[0]
+    result = cursor.fetchone()
     conn.close()
     
+    if not result:
+        await update.message.reply_text("Профиль не найден. Используйте /register.")
+        return ConversationHandler.END
+    
+    age = result[0]
     keyboard = [
         ["Изменить имя"],
         ["Изменить возраст"], 
@@ -223,7 +227,6 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     await update.message.reply_text("Что изменить?", reply_markup=reply_markup)
     return EDIT_PROFILE
 
-# --- Обработчики редактирования ---
 async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Введите новое имя:")
     return EDIT_NAME
@@ -364,63 +367,48 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     cursor = conn.cursor()
     
     try:
+        # Проверяем, зарегистрирован ли пользователь
+        cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
+        if not cursor.fetchone():
+            await update.message.reply_text("Сначала зарегистрируйтесь с помощью /register.")
+            return
+
         # Получаем данные текущего пользователя
-        cursor.execute("""
-            SELECT age, is_adult, age_preference 
-            FROM users 
-            WHERE user_id = ?
-        """, (user_id,))
+        cursor.execute("SELECT age, is_adult, age_preference FROM users WHERE user_id = ?", (user_id,))
         user_data = cursor.fetchone()
         
         if not user_data:
-            await update.message.reply_text("Сначала зарегистрируйтесь с помощью /register.")
+            await update.message.reply_text("Ошибка: данные пользователя не найдены.")
             return
             
         user_age, is_adult, age_preference = user_data
         
         # Формируем запрос в зависимости от возраста
-        if is_adult:
-            if age_preference:
-                # Разбираем возрастной диапазон
-                if age_preference == "18-25":
-                    min_age, max_age = 18, 25
-                elif age_preference == "26-35":
-                    min_age, max_age = 26, 35
-                elif age_preference == "36-45":
-                    min_age, max_age = 36, 45
-                elif age_preference == "46+":
-                    min_age, max_age = 46, 100
-                
-                cursor.execute("""
-                    SELECT user_id, name, age, gender, bio, photo_id 
-                    FROM users 
-                    WHERE user_id != ? 
-                    AND is_adult = 1
-                    AND age BETWEEN ? AND ?
-                    ORDER BY RANDOM() 
-                    LIMIT 1
-                """, (user_id, min_age, max_age))
-            else:
-                # Если предпочтения не указаны, показываем всех взрослых
-                cursor.execute("""
-                    SELECT user_id, name, age, gender, bio, photo_id 
-                    FROM users 
-                    WHERE user_id != ? 
-                    AND is_adult = 1
-                    ORDER BY RANDOM() 
-                    LIMIT 1
-                """, (user_id,))
-        else:
-            # Для несовершеннолетних показываем только несовершеннолетних
-            cursor.execute("""
-                SELECT user_id, name, age, gender, bio, photo_id 
-                FROM users 
-                WHERE user_id != ? 
-                AND is_adult = 0
-                ORDER BY RANDOM() 
-                LIMIT 1
-            """, (user_id,))
+        query = """
+            SELECT user_id, name, age, gender, bio, photo_id 
+            FROM users 
+            WHERE user_id != ? 
+            AND is_adult = ?
+        """
+        params = [user_id, is_adult]
+        
+        if is_adult and age_preference:
+            # Разбираем возрастной диапазон
+            if age_preference == "18-25":
+                min_age, max_age = 18, 25
+            elif age_preference == "26-35":
+                min_age, max_age = 26, 35
+            elif age_preference == "36-45":
+                min_age, max_age = 36, 45
+            elif age_preference == "46+":
+                min_age, max_age = 46, 100
             
+            query += " AND age BETWEEN ? AND ?"
+            params.extend([min_age, max_age])
+        
+        query += " ORDER BY RANDOM() LIMIT 1"
+        
+        cursor.execute(query, params)
         profile = cursor.fetchone()
 
         if profile:
@@ -520,7 +508,7 @@ async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Показ следующей анкеты"""
     query = update.callback_query
     await query.answer()
-    await browse_profiles(update, context)  # Повторно используем логику browse_profiles
+    await browse_profiles(update, context)
 
 # --- Жалобы ---
 async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
