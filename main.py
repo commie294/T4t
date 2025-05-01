@@ -75,6 +75,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # --- Регистрация профиля ---
 async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало регистрации"""
+    if update.message.from_user.is_bot:
+        return ConversationHandler.END
+        
     await update.message.reply_text("Ваше имя: как вас будут видеть другие пользователи?")
     return GET_NAME
 
@@ -94,12 +97,12 @@ async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             
             if age >= 18:
                 keyboard = [["18-25"], ["26-35"], ["36-45"], ["46+"]]
-                reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
                 await update.message.reply_text("Какой возраст вас интересует?", reply_markup=reply_markup)
                 return GET_AGE_PREFERENCE
             else:
                 keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
-                reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
                 await update.message.reply_text("Кем вы себя идентифицируете?", reply_markup=reply_markup)
                 return GET_GENDER
         else:
@@ -113,7 +116,7 @@ async def get_age_preference(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Получение возрастных предпочтений (для 18+)"""
     context.user_data['age_preference'] = update.message.text
     keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     await update.message.reply_text("Кем вы себя идентифицируете?", reply_markup=reply_markup)
     return GET_GENDER
 
@@ -148,26 +151,31 @@ async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     
-    cursor.execute("""
-        INSERT INTO users 
-        (user_id, name, age, gender, bio, photo_id, is_adult, age_preference) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        update.message.from_user.id,
-        context.user_data['name'],
-        context.user_data['age'],
-        context.user_data['gender'],
-        context.user_data['bio'],
-        context.user_data['photo_id'],
-        context.user_data.get('is_adult', False),
-        context.user_data.get('age_preference')
-    ))
-    
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("Профиль создан! Теперь вы можете просматривать анкеты других пользователей с помощью /browse.")
-    context.user_data.clear()
-    return ConversationHandler.END
+    try:
+        cursor.execute("""
+            INSERT OR REPLACE INTO users 
+            (user_id, name, age, gender, bio, photo_id, is_adult, age_preference) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            update.message.from_user.id,
+            context.user_data['name'],
+            context.user_data['age'],
+            context.user_data['gender'],
+            context.user_data['bio'],
+            context.user_data['photo_id'],
+            context.user_data.get('is_adult', False),
+            context.user_data.get('age_preference')
+        ))
+        
+        conn.commit()
+        await update.message.reply_text("Профиль создан! Теперь вы можете просматривать анкеты других пользователей с помощью /browse.")
+    except Exception as e:
+        logger.error(f"Ошибка при создании профиля: {e}")
+        await update.message.reply_text("Произошла ошибка при создании профиля. Пожалуйста, попробуйте снова.")
+    finally:
+        conn.close()
+        context.user_data.clear()
+        return ConversationHandler.END
 
 # --- Просмотр и редактирование профиля ---
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -175,57 +183,70 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT name, age, gender, bio, photo_id, age_preference 
-        FROM users WHERE user_id = ?
-    """, (user_id,))
-    profile = cursor.fetchone()
-    conn.close()
+    
+    try:
+        cursor.execute("""
+            SELECT name, age, gender, bio, photo_id, age_preference 
+            FROM users WHERE user_id = ?
+        """, (user_id,))
+        profile = cursor.fetchone()
 
-    if profile:
-        name, age, gender, bio, photo_id, age_preference = profile
-        caption = f"Ваш профиль:\nИмя: {name}\nВозраст: {age}\nГендер: {gender}\nО себе: {bio}"
-        if age_preference:
-            caption += f"\n\nИщу возраст: {age_preference}"
-        
-        await context.bot.send_photo(
-            chat_id=update.message.chat_id,
-            photo=photo_id,
-            caption=caption
-        )
-    else:
-        await update.message.reply_text("Профиль не найден. Используйте /register для создания профиля.")
+        if profile:
+            name, age, gender, bio, photo_id, age_preference = profile
+            caption = f"Ваш профиль:\nИмя: {name}\nВозраст: {age}\nГендер: {gender}\nО себе: {bio}"
+            if age_preference:
+                caption += f"\n\nИщу возраст: {age_preference}"
+            
+            await context.bot.send_photo(
+                chat_id=update.message.chat_id,
+                photo=photo_id,
+                caption=caption
+            )
+        else:
+            await update.message.reply_text("Профиль не найден. Используйте /register для создания профиля.")
+    except Exception as e:
+        logger.error(f"Ошибка при показе профиля: {e}")
+        await update.message.reply_text("Произошла ошибка при загрузке профиля.")
+    finally:
+        conn.close()
 
 async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Меню редактирования профиля"""
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT age FROM users WHERE user_id = ?", (user_id,))
-    result = cursor.fetchone()
-    conn.close()
     
-    if not result:
-        await update.message.reply_text("Профиль не найден. Используйте /register.")
+    try:
+        cursor.execute("SELECT age FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        
+        if not result:
+            await update.message.reply_text("Профиль не найден. Используйте /register.")
+            return ConversationHandler.END
+        
+        age = result[0]
+        keyboard = [
+            ["Изменить имя"],
+            ["Изменить возраст"], 
+            ["Изменить гендер"],
+            ["Изменить фото"],
+            ["Изменить описание"]
+        ]
+        
+        if age >= 18:
+            keyboard.append(["Изменить возрастные предпочтения"])
+        
+        keyboard.append(["Отмена"])
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        await update.message.reply_text("Что изменить?", reply_markup=reply_markup)
+        return EDIT_PROFILE
+    except Exception as e:
+        logger.error(f"Ошибка при редактировании профиля: {e}")
+        await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте снова.")
         return ConversationHandler.END
-    
-    age = result[0]
-    keyboard = [
-        ["Изменить имя"],
-        ["Изменить возраст"], 
-        ["Изменить гендер"],
-        ["Изменить фото"],
-        ["Изменить описание"]
-    ]
-    
-    if age >= 18:
-        keyboard.append(["Изменить возрастные предпочтения"])
-    
-    keyboard.append(["Отмена"])
-    
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("Что изменить?", reply_markup=reply_markup)
-    return EDIT_PROFILE
+    finally:
+        conn.close()
 
 async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Введите новое имя:")
@@ -236,11 +257,17 @@ async def update_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET name = ? WHERE user_id = ?", (new_name, user_id))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("Имя обновлено!")
-    return ConversationHandler.END
+    
+    try:
+        cursor.execute("UPDATE users SET name = ? WHERE user_id = ?", (new_name, user_id))
+        conn.commit()
+        await update.message.reply_text("Имя обновлено!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении имени: {e}")
+        await update.message.reply_text("Произошла ошибка при обновлении имени.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
 
 async def edit_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Введите новый возраст:")
@@ -261,7 +288,6 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 WHERE user_id = ?
             """, (new_age, is_adult, user_id))
             conn.commit()
-            conn.close()
             
             await update.message.reply_text("Возраст обновлен!")
             return ConversationHandler.END
@@ -271,10 +297,16 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except ValueError:
         await update.message.reply_text("Введите число.")
         return EDIT_AGE
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении возраста: {e}")
+        await update.message.reply_text("Произошла ошибка при обновлении возраста.")
+        return ConversationHandler.END
+    finally:
+        conn.close()
 
 async def edit_age_preference(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [["18-25"], ["26-35"], ["36-45"], ["46+"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     await update.message.reply_text("Выберите возраст:", reply_markup=reply_markup)
     return EDIT_AGE_PREFERENCE
 
@@ -283,15 +315,21 @@ async def update_age_preference(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET age_preference = ? WHERE user_id = ?", (new_pref, user_id))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("Возрастные предпочтения обновлены!")
-    return ConversationHandler.END
+    
+    try:
+        cursor.execute("UPDATE users SET age_preference = ? WHERE user_id = ?", (new_pref, user_id))
+        conn.commit()
+        await update.message.reply_text("Возрастные предпочтения обновлены!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении предпочтений: {e}")
+        await update.message.reply_text("Произошла ошибка при обновлении предпочтений.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
 
 async def edit_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     await update.message.reply_text("Выберите гендер:", reply_markup=reply_markup)
     return EDIT_GENDER
 
@@ -304,22 +342,34 @@ async def update_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("Гендер обновлен!")
-    return ConversationHandler.END
+    
+    try:
+        cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
+        conn.commit()
+        await update.message.reply_text("Гендер обновлен!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении гендера: {e}")
+        await update.message.reply_text("Произошла ошибка при обновлении гендера.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
 
 async def edit_gender_other_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     new_gender = update.message.text
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("Гендер обновлен!")
-    return ConversationHandler.END
+    
+    try:
+        cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
+        conn.commit()
+        await update.message.reply_text("Гендер обновлен!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении гендера: {e}")
+        await update.message.reply_text("Произошла ошибка при обновлении гендера.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
 
 async def edit_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Введите новое описание:")
@@ -330,11 +380,17 @@ async def update_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.message.from_user.id
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (new_bio, user_id))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("Описание обновлено!")
-    return ConversationHandler.END
+    
+    try:
+        cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (new_bio, user_id))
+        conn.commit()
+        await update.message.reply_text("Описание обновлено!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении описания: {e}")
+        await update.message.reply_text("Произошла ошибка при обновлении описания.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
 
 async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Отправьте новое фото:")
@@ -346,11 +402,18 @@ async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         user_id = update.message.from_user.id
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
-        cursor.execute("UPDATE users SET photo_id = ? WHERE user_id = ?", (new_photo, user_id))
-        conn.commit()
-        conn.close()
-        await update.message.reply_text("Фото обновлено!")
-        return ConversationHandler.END
+        
+        try:
+            cursor.execute("UPDATE users SET photo_id = ? WHERE user_id = ?", (new_photo, user_id))
+            conn.commit()
+            await update.message.reply_text("Фото обновлено!")
+            return ConversationHandler.END
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении фото: {e}")
+            await update.message.reply_text("Произошла ошибка при обновлении фото.")
+            return EDIT_PHOTO
+        finally:
+            conn.close()
     else:
         await update.message.reply_text("Пожалуйста, отправьте фото.")
         return EDIT_PHOTO
@@ -374,14 +437,14 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
 
         # Получаем данные текущего пользователя
-        cursor.execute("SELECT age, is_adult, age_preference FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT is_adult, age_preference FROM users WHERE user_id = ?", (user_id,))
         user_data = cursor.fetchone()
         
         if not user_data:
             await update.message.reply_text("Ошибка: данные пользователя не найдены.")
             return
             
-        user_age, is_adult, age_preference = user_data
+        is_adult, age_preference = user_data
         
         # Формируем запрос в зависимости от возраста
         query = """
@@ -389,22 +452,26 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             FROM users 
             WHERE user_id != ? 
             AND is_adult = ?
+            AND user_id NOT IN (
+                SELECT reported_user_id FROM reports 
+                WHERE reporter_user_id = ?
+                LIMIT 100
+            )
         """
-        params = [user_id, is_adult]
+        params = [user_id, is_adult, user_id]
         
         if is_adult and age_preference:
             # Разбираем возрастной диапазон
-            if age_preference == "18-25":
-                min_age, max_age = 18, 25
-            elif age_preference == "26-35":
-                min_age, max_age = 26, 35
-            elif age_preference == "36-45":
-                min_age, max_age = 36, 45
-            elif age_preference == "46+":
-                min_age, max_age = 46, 100
-            
-            query += " AND age BETWEEN ? AND ?"
-            params.extend([min_age, max_age])
+            age_ranges = {
+                "18-25": (18, 25),
+                "26-35": (26, 35),
+                "36-45": (36, 45),
+                "46+": (46, 100)
+            }
+            if age_preference in age_ranges:
+                min_age, max_age = age_ranges[age_preference]
+                query += " AND age BETWEEN ? AND ?"
+                params.extend([min_age, max_age])
         
         query += " ORDER BY RANDOM() LIMIT 1"
         
@@ -427,10 +494,10 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 reply_markup=reply_markup
             )
         else:
-            await update.message.reply_text("Нет доступных анкет в выбранной категории.")
+            await update.message.reply_text("Нет доступных анкет. Попробуйте изменить критерии поиска в /edit_profile или попробуйте позже.")
     except Exception as e:
         logger.error(f"Ошибка в browse_profiles: {e}", exc_info=True)
-        await update.message.reply_text("Ошибка при загрузке анкеты.")
+        await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте позже.")
     finally:
         conn.close()
 
@@ -446,6 +513,16 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     cursor = conn.cursor()
     
     try:
+        # Проверяем, не лайкали ли уже
+        cursor.execute("""
+            SELECT 1 FROM matches 
+            WHERE user_id_1 = ? AND user_id_2 = ?
+        """, (liking_user_id, liked_user_id))
+        
+        if cursor.fetchone():
+            await query.answer("Вы уже лайкнули этот профиль", show_alert=True)
+            return
+            
         # Добавляем лайк в базу
         cursor.execute("""
             INSERT INTO matches (user_id_1, user_id_2) 
@@ -536,6 +613,17 @@ async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         cursor = conn.cursor()
         
         try:
+            # Проверяем, не жаловались ли уже
+            cursor.execute("""
+                SELECT 1 FROM reports 
+                WHERE reporter_user_id = ? AND reported_user_id = ?
+                LIMIT 1
+            """, (reporter_id, reported_id))
+            
+            if cursor.fetchone():
+                await update.message.reply_text("Вы уже жаловались на этого пользователя.")
+                return ConversationHandler.END
+                
             # Сохраняем жалобу в базу
             cursor.execute("""
                 INSERT INTO reports 
@@ -561,16 +649,15 @@ async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             )
             
             await update.message.reply_text("Жалоба отправлена администратору.")
-            return ConversationHandler.END
         except Exception as e:
             logger.error(f"Ошибка в get_report_reason: {e}", exc_info=True)
             await update.message.reply_text("Ошибка при отправке жалобы.")
-            return ConversationHandler.END
         finally:
             conn.close()
     else:
         await update.message.reply_text("Ошибка обработки жалобы.")
-        return ConversationHandler.END
+    
+    return ConversationHandler.END
 
 # --- Мэтчи ---
 async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -581,7 +668,7 @@ async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     try:
         cursor.execute("""
-            SELECT u.user_id, u.name 
+            SELECT u.user_id, u.name, u.photo_id
             FROM matches m
             JOIN users u ON (
                 (m.user_id_1 = u.user_id AND m.user_id_2 = ?) OR
@@ -593,17 +680,21 @@ async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         matches = cursor.fetchall()
         
         if matches:
-            message = "Ваши мэтчи:\n"
-            keyboard = []
-            for match_user_id, match_name in matches:
-                message += f"- {match_name}\n"
-                keyboard.append([InlineKeyboardButton(
-                    f"Написать {match_name}", 
-                    callback_data=f'chat_{match_user_id}'
-                )])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(message, reply_markup=reply_markup)
+            for match_user_id, match_name, photo_id in matches:
+                keyboard = [
+                    [InlineKeyboardButton(
+                        f"Написать {match_name}", 
+                        callback_data=f'chat_{match_user_id}'
+                    )]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await context.bot.send_photo(
+                    chat_id=update.message.chat_id,
+                    photo=photo_id,
+                    caption=f"Мэтч с {match_name}",
+                    reply_markup=reply_markup
+                )
         else:
             await update.message.reply_text("У вас пока нет мэтчей.")
     except Exception as e:
@@ -637,7 +728,8 @@ def setup_registration_conversation():
             GET_PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
             GET_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_bio)],
         },
-        fallbacks=[]
+        fallbacks=[CommandHandler("cancel", cancel_edit)],
+        allow_reentry=True
     )
 
 def setup_edit_profile_conversation():
@@ -662,7 +754,8 @@ def setup_edit_profile_conversation():
             EDIT_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_bio)],
             EDIT_AGE_PREFERENCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_age_preference)],
         },
-        fallbacks=[MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_edit)]
+        fallbacks=[CommandHandler("cancel", cancel_edit)],
+        allow_reentry=True
     )
 
 def setup_report_conversation():
@@ -672,7 +765,8 @@ def setup_report_conversation():
         states={
             GET_REPORT_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_report_reason)],
         },
-        fallbacks=[]
+        fallbacks=[CommandHandler("cancel", cancel_edit)],
+        allow_reentry=True
     )
 
 def main() -> None:
@@ -700,49 +794,56 @@ def main() -> None:
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
         
-        # Таблица пользователей
-        cursor.execute("""
-            CREATE TABLE users (
-                user_id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                age INTEGER NOT NULL,
-                gender TEXT NOT NULL,
-                bio TEXT,
-                photo_id TEXT NOT NULL,
-                is_adult BOOLEAN DEFAULT FALSE,
-                age_preference TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Таблица мэтчей
-        cursor.execute("""
-            CREATE TABLE matches (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id_1 INTEGER NOT NULL,
-                user_id_2 INTEGER NOT NULL,
-                is_match BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id_1) REFERENCES users(user_id),
-                FOREIGN KEY (user_id_2) REFERENCES users(user_id)
-            )
-        """)
-        
-        # Таблица жалоб
-        cursor.execute("""
-            CREATE TABLE reports (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                reporter_user_id INTEGER NOT NULL,
-                reported_user_id INTEGER NOT NULL,
-                reason TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (reporter_user_id) REFERENCES users(user_id),
-                FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
-            )
-        """)
-        
-        conn.commit()
-        conn.close()
+        try:
+            # Таблица пользователей
+            cursor.execute("""
+                CREATE TABLE users (
+                    user_id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    age INTEGER NOT NULL,
+                    gender TEXT NOT NULL,
+                    bio TEXT,
+                    photo_id TEXT NOT NULL,
+                    is_adult BOOLEAN DEFAULT FALSE,
+                    age_preference TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Таблица мэтчей
+            cursor.execute("""
+                CREATE TABLE matches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id_1 INTEGER NOT NULL,
+                    user_id_2 INTEGER NOT NULL,
+                    is_match BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id_1) REFERENCES users(user_id),
+                    FOREIGN KEY (user_id_2) REFERENCES users(user_id),
+                    UNIQUE(user_id_1, user_id_2)
+                )
+            """)
+            
+            # Таблица жалоб
+            cursor.execute("""
+                CREATE TABLE reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reporter_user_id INTEGER NOT NULL,
+                    reported_user_id INTEGER NOT NULL,
+                    reason TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (reporter_user_id) REFERENCES users(user_id),
+                    FOREIGN KEY (reported_user_id) REFERENCES users(user_id),
+                    UNIQUE(reporter_user_id, reported_user_id)
+                )
+            """)
+            
+            conn.commit()
+            logger.info("База данных успешно инициализирована")
+        except Exception as e:
+            logger.error(f"Ошибка при инициализации базы данных: {e}")
+        finally:
+            conn.close()
 
     application.run_polling()
 
