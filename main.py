@@ -261,22 +261,22 @@ async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return ConversationHandler.END
 
 async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print("Вызвана функция browse_profiles")
+async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.info(f"Вызвана функция browse_profiles для пользователя {update.message.from_user.id}")
     user_id = update.message.from_user.id
-    print(f"ID пользователя: {user_id}")
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    print("Подключились к базе данных")
+    logger.debug("Подключились к базе данных")
     try:
-        cursor.execute("SELECT * FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT 1", (user_id,))
+        cursor.execute("SELECT user_id, name, age, gender, bio, photo_id FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT 1", (user_id,))
         profile = cursor.fetchone()
-        print(f"Результат запроса: {profile}")
+        logger.debug(f"Результат запроса к базе данных: {profile}")
         conn.close()
-        print("Закрыли соединение с базой данных")
+        logger.debug("Закрыли соединение с базой данных")
 
         if profile:
-            user_id_browse, name, age, gender, bio, photo_id, _, _ = profile
-            print(f"Нашли профиль: {name}, {age}, {gender}")
+            user_id_browse, name, age, gender, bio, photo_id = profile
+            logger.info(f"Нашли профиль для просмотра: ID={user_id_browse}, Имя={name}, Возраст={age}, Пол={gender}")
             keyboard = [
                 [InlineKeyboardButton("👍 Лайк", callback_data=f'like_{user_id_browse}')],
                 [InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
@@ -286,14 +286,15 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             media = InputMediaPhoto(media=photo_id, caption=f"Имя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}")
             try:
                 await context.bot.send_media_group(chat_id=update.message.chat_id, media=[media], reply_markup=reply_markup)
-                print("Отправили медиа-группу")
+                logger.info(f"Успешно отправили анкету пользователя ID {user_id_browse} пользователю {user_id}")
             except Exception as e:
-                print(f"Ошибка при отправке медиа-группы: {e}")
+                logger.error(f"Ошибка при отправке медиа-группы: {e}", exc_info=True)
+                await update.message.reply_text("Произошла ошибка при отправке анкеты.")
         else:
             await update.message.reply_text("Пока нет доступных анкет для просмотра.")
-            print("Не нашли других пользователей")
+            logger.info("Нет доступных анкет для просмотра.")
     except sqlite3.Error as e:
-        print(f"Ошибка базы данных при browse_profiles: {e}")
+        logger.error(f"Ошибка базы данных при browse_profiles: {e}", exc_info=True)
         await update.message.reply_text("Произошла ошибка при просмотре анкет.")
     finally:
         if 'conn' in locals() and conn:
