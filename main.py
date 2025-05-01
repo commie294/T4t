@@ -37,11 +37,11 @@ DATABASE_NAME = 't4t_meet.db'
 
 (
     REGISTER, GET_NAME, GET_AGE, GET_AGE_PREFERENCE, 
-    GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO,
+    GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO, GET_CITY,
     EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_AGE_PREFERENCE,
-    EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO,
+    EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO, EDIT_CITY,
     REPORT, GET_REPORT_REASON
-) = range(18)
+) = range(20)
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE_NAME)
@@ -55,8 +55,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "1. Будьте уважительны к другим участникам.\n"
         "2. Запрещены оскорбления, дискриминация и нетерпимость. Анкеты цисгендеров будут блокироваться.\n"
         "3. Не публикуйте контент 18+ и другой неприемлемый материал.\n"
-        "4. Соблюдайте конфиденциальность личной информации других пользователей.\n"
-        "5. Администрация оставляет за собой право удалять профили и блокировать пользователей за нарушения.\n\n"
+        "4. Соблюдайте конфиденциальность личной информации других пользователей.\n\n"
         "Основные команды:\n"
         "/register - Зарегистрировать свой профиль.\n"
         "/browse - Просмотр анкет других пользователей.\n"
@@ -93,7 +92,7 @@ async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             context.user_data['is_adult'] = age >= 18
             
             if age >= 18:
-                keyboard = [["18-25"], ["26-35"], ["36-45"], ["46+"]]
+                keyboard = [["18-25"], ["26-35"], ["36-45"], ["46+"], ["Все 18+"]]
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
                 await update.message.reply_text("Какой возраст вас интересует?", reply_markup=reply_markup)
                 return GET_AGE_PREFERENCE
@@ -140,14 +139,19 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['bio'] = update.message.text
+    await update.message.reply_text("В каком городе вы находитесь? (Необязательно, но поможет находить людей рядом)")
+    return GET_CITY
+
+async def get_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data['city'] = update.message.text.title() if update.message.text else None
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
         cursor.execute("""
             INSERT OR REPLACE INTO users 
-            (user_id, name, age, gender, bio, photo_id, is_adult, age_preference) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, name, age, gender, bio, photo_id, is_adult, age_preference, city) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             update.message.from_user.id,
             context.user_data['name'],
@@ -156,7 +160,8 @@ async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             context.user_data['bio'],
             context.user_data['photo_id'],
             context.user_data.get('is_adult', False),
-            context.user_data.get('age_preference')
+            context.user_data.get('age_preference'),
+            context.user_data.get('city')
         ))
         
         conn.commit()
@@ -182,11 +187,13 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             cursor.execute("ALTER TABLE users ADD COLUMN age_preference TEXT")
         if 'is_adult' not in columns:
             cursor.execute("ALTER TABLE users ADD COLUMN is_adult BOOLEAN DEFAULT FALSE")
+        if 'city' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN city TEXT")
         
         conn.commit()
         
         cursor.execute("""
-            SELECT name, age, gender, bio, photo_id, age_preference 
+            SELECT name, age, gender, bio, photo_id, age_preference, city 
             FROM users WHERE user_id = ?
         """, (user_id,))
         profile = cursor.fetchone()
@@ -198,8 +205,9 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             bio = profile['bio']
             photo_id = profile['photo_id']
             age_preference = profile.get('age_preference', 'Не указано')
+            city = profile.get('city', 'Не указан')
             
-            caption = f"Ваш профиль:\nИмя: {name}\nВозраст: {age}\nГендер: {gender}\nО себе: {bio}"
+            caption = f"Ваш профиль:\nИмя: {name}\nВозраст: {age}\nГендер: {gender}\nГород: {city}\nО себе: {bio}"
             if age >= 18:
                 caption += f"\n\nИщу возраст: {age_preference}"
             
@@ -226,6 +234,8 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         columns = [column[1] for column in cursor.fetchall()]
         if 'is_adult' not in columns:
             cursor.execute("ALTER TABLE users ADD COLUMN is_adult BOOLEAN DEFAULT FALSE")
+        if 'city' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN city TEXT")
             conn.commit()
         
         cursor.execute("SELECT age, is_adult FROM users WHERE user_id = ?", (user_id,))
@@ -243,7 +253,8 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             ["Изменить возраст"], 
             ["Изменить гендер"],
             ["Изменить фото"],
-            ["Изменить описание"]
+            ["Изменить описание"],
+            ["Изменить город"]
         ]
         
         if is_adult:
@@ -319,7 +330,7 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             conn.close()
 
 async def edit_age_preference(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [["18-25"], ["26-35"], ["36-45"], ["46+"]]
+    keyboard = [["18-25"], ["26-35"], ["36-45"], ["46+"], ["Все 18+"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     await update.message.reply_text("Выберите возраст:", reply_markup=reply_markup)
     return EDIT_AGE_PREFERENCE
@@ -437,6 +448,27 @@ async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text("Пожалуйста, отправьте фото.")
         return EDIT_PHOTO
 
+async def edit_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Введите новый город (или 'нет' чтобы удалить):")
+    return EDIT_CITY
+
+async def update_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_city = update.message.text.title() if update.message.text.lower() != 'нет' else None
+    user_id = update.message.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE users SET city = ? WHERE user_id = ?", (new_city, user_id))
+        conn.commit()
+        await update.message.reply_text("Город обновлен!" if new_city else "Город удален из профиля")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении города: {e}")
+        await update.message.reply_text("Произошла ошибка при обновлении города.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
+
 async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Редактирование отменено.")
     return ConversationHandler.END
@@ -452,29 +484,31 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text("Сначала зарегистрируйтесь с помощью /register.")
             return
 
-        cursor.execute("SELECT is_adult, age_preference FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT is_adult, age_preference, city FROM users WHERE user_id = ?", (user_id,))
         user_data = cursor.fetchone()
         
         if not user_data:
             await update.message.reply_text("Ошибка: данные пользователя не найдены.")
             return
             
-        is_adult, age_preference = user_data
+        is_adult, age_preference, user_city = user_data
         
         query = """
-            SELECT user_id, name, age, gender, bio, photo_id 
-            FROM users 
-            WHERE user_id != ? 
-            AND is_adult = ?
-            AND user_id NOT IN (
+            SELECT u.user_id, u.name, u.age, u.gender, u.bio, u.photo_id 
+            FROM users u
+            LEFT JOIN viewed_profiles v ON u.user_id = v.viewed_id AND v.viewer_id = ?
+            WHERE u.user_id != ? 
+            AND u.is_adult = ?
+            AND u.user_id NOT IN (
                 SELECT reported_user_id FROM reports 
                 WHERE reporter_user_id = ?
                 LIMIT 100
             )
+            AND (v.viewed_id IS NULL OR v.timestamp < datetime('now', '-7 days'))
         """
-        params = [user_id, is_adult, user_id]
+        params = [user_id, user_id, is_adult, user_id]
         
-        if is_adult and age_preference:
+        if is_adult and age_preference and age_preference != "Все 18+":
             age_ranges = {
                 "18-25": (18, 25),
                 "26-35": (26, 35),
@@ -483,27 +517,55 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             }
             if age_preference in age_ranges:
                 min_age, max_age = age_ranges[age_preference]
-                query += " AND age BETWEEN ? AND ?"
+                query += " AND u.age BETWEEN ? AND ?"
                 params.extend([min_age, max_age])
         
-        query += " ORDER BY RANDOM() LIMIT 1"
+        if user_city:
+            query += " AND (u.city IS NULL OR lower(u.city) = lower(?))"
+            params.append(user_city)
+        
+        query += " ORDER BY v.timestamp ASC, RANDOM() LIMIT 1"
         
         cursor.execute(query, params)
         profile = cursor.fetchone()
 
+        if not profile:
+            cursor.execute("""
+                SELECT u.user_id, u.name, u.age, u.gender, u.bio, u.photo_id 
+                FROM users u
+                WHERE u.user_id != ? 
+                AND u.is_adult = ?
+                AND u.user_id NOT IN (
+                    SELECT reported_user_id FROM reports 
+                    WHERE reporter_user_id = ?
+                    LIMIT 100
+                )
+                ORDER BY RANDOM()
+                LIMIT 1
+            """, (user_id, is_adult, user_id))
+            profile = cursor.fetchone()
+
         if profile:
             user_id_browse, name, age, gender, bio, photo_id = profile
+            cursor.execute("""
+                INSERT OR REPLACE INTO viewed_profiles (viewer_id, viewed_id)
+                VALUES (?, ?)
+            """, (user_id, user_id_browse))
+            conn.commit()
+
             keyboard = [
                 [InlineKeyboardButton("👍 Лайк", callback_data=f'like_{user_id_browse}')],
                 [InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
                 [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{user_id_browse}')],
+                [InlineKeyboardButton("🌍 Показать из других городов", callback_data='other_cities')]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
+            caption = f"Имя: {name}\nВозраст: {age}\nГендер: {gender}\nО себе: {bio}"
             await context.bot.send_photo(
                 chat_id=update.message.chat_id,
                 photo=photo_id,
-                caption=f"Имя: {name}\nВозраст: {age}\nГендер: {gender}\nО себе: {bio}",
+                caption=caption,
                 reply_markup=reply_markup
             )
         else:
@@ -511,6 +573,83 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         logger.error(f"Ошибка в browse_profiles: {e}", exc_info=True)
         await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте позже.")
+    finally:
+        conn.close()
+
+async def browse_other_cities(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT is_adult, age_preference FROM users WHERE user_id = ?", (user_id,))
+        user_data = cursor.fetchone()
+        
+        if not user_data:
+            await query.edit_message_text("Ошибка: данные пользователя не найдены.")
+            return
+            
+        is_adult, age_preference = user_data
+        
+        query_sql = """
+            SELECT u.user_id, u.name, u.age, u.gender, u.bio, u.photo_id, u.city
+            FROM users u
+            LEFT JOIN viewed_profiles v ON u.user_id = v.viewed_id AND v.viewer_id = ?
+            WHERE u.user_id != ? 
+            AND u.is_adult = ?
+            AND u.user_id NOT IN (
+                SELECT reported_user_id FROM reports 
+                WHERE reporter_user_id = ?
+                LIMIT 100
+            )
+        """
+        params = [user_id, user_id, is_adult, user_id]
+        
+        if is_adult and age_preference and age_preference != "Все 18+":
+            age_ranges = {
+                "18-25": (18, 25),
+                "26-35": (26, 35),
+                "36-45": (36, 45),
+                "46+": (46, 100)
+            }
+            if age_preference in age_ranges:
+                min_age, max_age = age_ranges[age_preference]
+                query_sql += " AND u.age BETWEEN ? AND ?"
+                params.extend([min_age, max_age])
+        
+        query_sql += " ORDER BY RANDOM() LIMIT 1"
+        
+        cursor.execute(query_sql, params)
+        profile = cursor.fetchone()
+
+        if profile:
+            user_id_browse, name, age, gender, bio, photo_id, city = profile
+            cursor.execute("""
+                INSERT OR REPLACE INTO viewed_profiles (viewer_id, viewed_id)
+                VALUES (?, ?)
+            """, (user_id, user_id_browse))
+            conn.commit()
+
+            keyboard = [
+                [InlineKeyboardButton("👍 Лайк", callback_data=f'like_{user_id_browse}')],
+                [InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
+                [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{user_id_browse}')],
+                [InlineKeyboardButton("🏙️ Показать из моего города", callback_data='my_city')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            caption = f"Имя: {name}\nВозраст: {age}\nГендер: {gender}\nГород: {city or 'Не указан'}\nО себе: {bio}"
+            await query.edit_message_caption(
+                caption=caption,
+                reply_markup=reply_markup
+            )
+        else:
+            await query.edit_message_text("Нет доступных анкет.")
+    except Exception as e:
+        logger.error(f"Ошибка в browse_other_cities: {e}", exc_info=True)
+        await query.answer("Ошибка при загрузке анкет")
     finally:
         conn.close()
 
@@ -719,6 +858,7 @@ def setup_registration_conversation():
             GET_GENDER_OTHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender_other)],
             GET_PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
             GET_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_bio)],
+            GET_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_city)],
         },
         fallbacks=[CommandHandler("cancel", cancel_edit)],
         allow_reentry=True
@@ -734,6 +874,7 @@ def setup_edit_profile_conversation():
                 MessageHandler(filters.Regex("^Изменить гендер$"), edit_gender),
                 MessageHandler(filters.Regex("^Изменить фото$"), edit_photo),
                 MessageHandler(filters.Regex("^Изменить описание$"), edit_bio),
+                MessageHandler(filters.Regex("^Изменить город$"), edit_city),
                 MessageHandler(filters.Regex("^Изменить возрастные предпочтения$"), edit_age_preference),
                 MessageHandler(filters.Regex("^Отмена$"), cancel_edit),
             ],
@@ -744,6 +885,7 @@ def setup_edit_profile_conversation():
             EDIT_PHOTO: [MessageHandler(filters.PHOTO, update_photo)],
             EDIT_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_bio)],
             EDIT_AGE_PREFERENCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_age_preference)],
+            EDIT_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_city)],
         },
         fallbacks=[CommandHandler("cancel", cancel_edit)],
         allow_reentry=True
@@ -774,6 +916,8 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(like_profile, pattern='^like_'))
     application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
     application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
+    application.add_handler(CallbackQueryHandler(browse_other_cities, pattern='^other_cities$'))
+    application.add_handler(CallbackQueryHandler(browse_profiles, pattern='^my_city$'))
 
     if not os.path.exists(DATABASE_NAME):
         conn = sqlite3.connect(DATABASE_NAME)
@@ -790,6 +934,7 @@ def main() -> None:
                     photo_id TEXT NOT NULL,
                     is_adult BOOLEAN DEFAULT FALSE,
                     age_preference TEXT,
+                    city TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -817,6 +962,17 @@ def main() -> None:
                     FOREIGN KEY (reporter_user_id) REFERENCES users(user_id),
                     FOREIGN KEY (reported_user_id) REFERENCES users(user_id),
                     UNIQUE(reporter_user_id, reported_user_id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE viewed_profiles (
+                    viewer_id INTEGER NOT NULL,
+                    viewed_id INTEGER NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (viewer_id) REFERENCES users(user_id),
+                    FOREIGN KEY (viewed_id) REFERENCES users(user_id),
+                    PRIMARY KEY (viewer_id, viewed_id)
                 )
             """)
             
