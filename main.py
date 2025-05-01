@@ -46,21 +46,23 @@ DATABASE_NAME = 't4t_meet.db'
     REPORT, GET_REPORT_REASON
 ) = range(18)
 
+# --- Обработчики команд ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start"""
     rules = (
         "Добро пожаловать в T4t Meet!\n\n"
-        "Правила:\n"
-        "1. Будьте уважительны к другим\n"
-        "2. Запрещены оскорбления и дискриминация\n"
-        "3. Не публикуйте контент 18+\n"
-        "4. Соблюдайте конфиденциальность\n\n"
-        "Команды:\n"
-        "/register - Регистрация\n"
-        "/browse - Просмотр анкет\n"
-        "/matches - Ваши мэтчи\n"
-        "/profile - Ваш профиль\n"
-        "/edit_profile - Редактировать профиль"
+        "Пожалуйста, ознакомьтесь с нашими правилами:\n"
+        "1. Будьте уважительны к другим участникам.\n"
+        "2. Запрещены оскорбления, дискриминация и нетерпимость. Анкеты цисгендеров будут блокироваться.\n"
+        "3. Не публикуйте контент 18+ и другой неприемлемый материал.\n"
+        "4. Соблюдайте конфиденциальность личной информации других пользователей.\n"
+        "5. Администрация оставляет за собой право удалять профили и блокировать пользователей за нарушения.\n\n"
+        "Основные команды:\n"
+        "/register - Зарегистрировать свой профиль.\n"
+        "/browse - Просмотр анкет других пользователей.\n"
+        "/matches - Просмотр ваших мэтчей.\n"
+        "/profile - Просмотр вашего профиля.\n"
+        "/edit_profile - Редактировать свой профиль."
     )
 
     keyboard = [
@@ -71,16 +73,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(rules, reply_markup=reply_markup)
 
-# Регистрация профиля
+# --- Регистрация профиля ---
 async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало регистрации"""
-    await update.message.reply_text("Ваше имя:")
+    await update.message.reply_text("Ваше имя: как вас будут видеть другие пользователи?")
     return GET_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получение имени"""
     context.user_data['name'] = update.message.text
-    await update.message.reply_text(f"Имя: {context.user_data['name']}\nСколько вам лет?")
+    await update.message.reply_text(f"Отлично, ваше имя будет '{context.user_data['name']}'. Теперь скажите, сколько вам лет?")
     return GET_AGE
 
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -99,13 +101,13 @@ async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             else:
                 keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-                await update.message.reply_text("Ваш гендер:", reply_markup=reply_markup)
+                await update.message.reply_text("Кем вы себя идентифицируете?", reply_markup=reply_markup)
                 return GET_GENDER
         else:
-            await update.message.reply_text("Возраст должен быть от 16 до 100 лет")
+            await update.message.reply_text("Возраст должен быть от 16 до 100 лет.")
             return GET_AGE
     except ValueError:
-        await update.message.reply_text("Введите число")
+        await update.message.reply_text("Введите число.")
         return GET_AGE
 
 async def get_age_preference(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -113,32 +115,32 @@ async def get_age_preference(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data['age_preference'] = update.message.text
     keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("Ваш гендер:", reply_markup=reply_markup)
+    await update.message.reply_text("Кем вы себя идентифицируете?", reply_markup=reply_markup)
     return GET_GENDER
 
 async def get_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получение гендера"""
     context.user_data['gender'] = update.message.text
     if context.user_data['gender'] == "Другое":
-        await update.message.reply_text("Уточните ваш гендер:")
+        await update.message.reply_text("Пожалуйста, уточните вашу гендерную идентичность.")
         return GET_GENDER_OTHER
-    await update.message.reply_text("Отправьте ваше фото:")
+    await update.message.reply_text("Спасибо. Теперь, пожалуйста, загрузите вашу фотографию профиля.")
     return GET_PHOTO
 
 async def get_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получение уточненного гендера"""
     context.user_data['gender'] = update.message.text
-    await update.message.reply_text("Отправьте ваше фото:")
+    await update.message.reply_text("Спасибо. Теперь, пожалуйста, загрузите вашу фотографию профиля.")
     return GET_PHOTO
 
 async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получение фото"""
     if update.message.photo:
         context.user_data['photo_id'] = update.message.photo[-1].file_id
-        await update.message.reply_text("Расскажите о себе:")
+        await update.message.reply_text("Отлично, фото получено. Теперь расскажите немного о себе (ваши интересы, что вы ищете и т.д.).")
         return GET_BIO
     else:
-        await update.message.reply_text("Отправьте фото:")
+        await update.message.reply_text("Пожалуйста, отправьте фото.")
         return GET_PHOTO
 
 async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -164,11 +166,11 @@ async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     conn.commit()
     conn.close()
-    await update.message.reply_text("Профиль создан!")
+    await update.message.reply_text("Профиль создан! Теперь вы можете просматривать анкеты других пользователей с помощью /browse.")
     context.user_data.clear()
     return ConversationHandler.END
 
-# Просмотр и редактирование профиля
+# --- Просмотр и редактирование профиля ---
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показ профиля пользователя"""
     user_id = update.message.from_user.id
@@ -183,7 +185,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if profile:
         name, age, gender, bio, photo_id, age_preference = profile
-        caption = f"Профиль:\nИмя: {name}\nВозраст: {age}\nГендер: {gender}\nО себе: {bio}"
+        caption = f"Ваш профиль:\nИмя: {name}\nВозраст: {age}\nГендер: {gender}\nО себе: {bio}"
         if age_preference:
             caption += f"\n\nИщу возраст: {age_preference}"
         
@@ -193,7 +195,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             caption=caption
         )
     else:
-        await update.message.reply_text("Профиль не найден. Используйте /register")
+        await update.message.reply_text("Профиль не найден. Используйте /register для создания профиля.")
 
 async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Меню редактирования профиля"""
@@ -221,7 +223,7 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     await update.message.reply_text("Что изменить?", reply_markup=reply_markup)
     return EDIT_PROFILE
 
-# Обработчики редактирования профиля
+# --- Обработчики редактирования ---
 async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Введите новое имя:")
     return EDIT_NAME
@@ -261,10 +263,10 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await update.message.reply_text("Возраст обновлен!")
             return ConversationHandler.END
         else:
-            await update.message.reply_text("Возраст должен быть 16-100")
+            await update.message.reply_text("Возраст должен быть от 16 до 100 лет.")
             return EDIT_AGE
     except ValueError:
-        await update.message.reply_text("Введите число")
+        await update.message.reply_text("Введите число.")
         return EDIT_AGE
 
 async def edit_age_preference(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -281,7 +283,7 @@ async def update_age_preference(update: Update, context: ContextTypes.DEFAULT_TY
     cursor.execute("UPDATE users SET age_preference = ? WHERE user_id = ?", (new_pref, user_id))
     conn.commit()
     conn.close()
-    await update.message.reply_text("Предпочтения обновлены!")
+    await update.message.reply_text("Возрастные предпочтения обновлены!")
     return ConversationHandler.END
 
 async def edit_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -293,7 +295,7 @@ async def edit_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def update_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     new_gender = update.message.text
     if new_gender == "Другое":
-        await update.message.reply_text("Уточните ваш гендер:")
+        await update.message.reply_text("Пожалуйста, уточните вашу гендерную идентичность.")
         return EDIT_GENDER_OTHER
     
     user_id = update.message.from_user.id
@@ -347,14 +349,14 @@ async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text("Фото обновлено!")
         return ConversationHandler.END
     else:
-        await update.message.reply_text("Отправьте фото:")
+        await update.message.reply_text("Пожалуйста, отправьте фото.")
         return EDIT_PHOTO
 
 async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Редактирование отменено")
+    await update.message.reply_text("Редактирование отменено.")
     return ConversationHandler.END
 
-# Просмотр анкет
+# --- Просмотр анкет ---
 async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Просмотр анкет других пользователей"""
     user_id = update.message.from_user.id
@@ -371,7 +373,7 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         user_data = cursor.fetchone()
         
         if not user_data:
-            await update.message.reply_text("Сначала зарегистрируйтесь /register")
+            await update.message.reply_text("Сначала зарегистрируйтесь с помощью /register.")
             return
             
         user_age, is_adult, age_preference = user_data
@@ -437,10 +439,10 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 reply_markup=reply_markup
             )
         else:
-            await update.message.reply_text("Нет доступных анкет в выбранной категории")
+            await update.message.reply_text("Нет доступных анкет в выбранной категории.")
     except Exception as e:
-        logger.error(f"Ошибка в browse_profiles: {e}")
-        await update.message.reply_text("Ошибка при загрузке анкеты")
+        logger.error(f"Ошибка в browse_profiles: {e}", exc_info=True)
+        await update.message.reply_text("Ошибка при загрузке анкеты.")
     finally:
         conn.close()
 
@@ -509,8 +511,8 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             reply_markup=reply_markup
         )
     except Exception as e:
-        logger.error(f"Ошибка в like_profile: {e}")
-        await query.answer("Ошибка при обработке лайка", show_alert=True)
+        logger.error(f"Ошибка в like_profile: {e}", exc_info=True)
+        await query.answer("Ошибка при обработке лайка.", show_alert=True)
     finally:
         conn.close()
 
@@ -518,88 +520,9 @@ async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Показ следующей анкеты"""
     query = update.callback_query
     await query.answer()
-    
-    user_id = query.from_user.id
-    conn = sqlite3.connect(DATABASE_NAME)
-    cursor = conn.cursor()
-    
-    try:
-        # Аналогично browse_profiles получаем следующую анкету
-        cursor.execute("SELECT is_adult, age_preference FROM users WHERE user_id = ?", (user_id,))
-        user_data = cursor.fetchone()
-        
-        if not user_data:
-            await query.edit_message_text("Сначала зарегистрируйтесь /register")
-            return
-            
-        is_adult, age_preference = user_data
-        
-        if is_adult:
-            if age_preference:
-                if age_preference == "18-25":
-                    min_age, max_age = 18, 25
-                elif age_preference == "26-35":
-                    min_age, max_age = 26, 35
-                elif age_preference == "36-45":
-                    min_age, max_age = 36, 45
-                elif age_preference == "46+":
-                    min_age, max_age = 46, 100
-                
-                cursor.execute("""
-                    SELECT user_id, name, age, gender, bio, photo_id 
-                    FROM users 
-                    WHERE user_id != ? 
-                    AND is_adult = 1
-                    AND age BETWEEN ? AND ?
-                    ORDER BY RANDOM() 
-                    LIMIT 1
-                """, (user_id, min_age, max_age))
-            else:
-                cursor.execute("""
-                    SELECT user_id, name, age, gender, bio, photo_id 
-                    FROM users 
-                    WHERE user_id != ? 
-                    AND is_adult = 1
-                    ORDER BY RANDOM() 
-                    LIMIT 1
-                """, (user_id,))
-        else:
-            cursor.execute("""
-                SELECT user_id, name, age, gender, bio, photo_id 
-                FROM users 
-                WHERE user_id != ? 
-                AND is_adult = 0
-                ORDER BY RANDOM() 
-                LIMIT 1
-            """, (user_id,))
-            
-        profile = cursor.fetchone()
+    await browse_profiles(update, context)  # Повторно используем логику browse_profiles
 
-        if profile:
-            user_id_browse, name, age, gender, bio, photo_id = profile
-            keyboard = [
-                [InlineKeyboardButton("👍 Лайк", callback_data=f'like_{user_id_browse}')],
-                [InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
-                [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{user_id_browse}')],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_media(
-                media=InputMediaPhoto(
-                    media=photo_id,
-                    caption=f"Имя: {name}\nВозраст: {age}\nГендер: {gender}\nО себе: {bio}"
-                ),
-                reply_markup=reply_markup
-            )
-        else:
-            await query.edit_message_text("Нет доступных анкет в выбранной категории")
-    except Exception as e:
-        logger.error(f"Ошибка в next_profile: {e}")
-        await query.answer("Ошибка при загрузке анкеты", show_alert=True)
-    finally:
-        conn.close()
-
-# Жалобы
+# --- Жалобы ---
 async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало процесса жалобы"""
     query = update.callback_query
@@ -649,19 +572,19 @@ async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                      f"Причина: {reason}"
             )
             
-            await update.message.reply_text("Жалоба отправлена администратору")
+            await update.message.reply_text("Жалоба отправлена администратору.")
             return ConversationHandler.END
         except Exception as e:
-            logger.error(f"Ошибка в get_report_reason: {e}")
-            await update.message.reply_text("Ошибка при отправке жалобы")
+            logger.error(f"Ошибка в get_report_reason: {e}", exc_info=True)
+            await update.message.reply_text("Ошибка при отправке жалобы.")
             return ConversationHandler.END
         finally:
             conn.close()
     else:
-        await update.message.reply_text("Ошибка обработки жалобы")
+        await update.message.reply_text("Ошибка обработки жалобы.")
         return ConversationHandler.END
 
-# Мэтчи
+# --- Мэтчи ---
 async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показ мэтчей пользователя"""
     user_id = update.message.from_user.id
@@ -694,10 +617,10 @@ async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(message, reply_markup=reply_markup)
         else:
-            await update.message.reply_text("У вас пока нет мэтчей")
+            await update.message.reply_text("У вас пока нет мэтчей.")
     except Exception as e:
-        logger.error(f"Ошибка в show_matches: {e}")
-        await update.message.reply_text("Ошибка при загрузке мэтчей")
+        logger.error(f"Ошибка в show_matches: {e}", exc_info=True)
+        await update.message.reply_text("Ошибка при загрузке мэтчей.")
     finally:
         conn.close()
 
@@ -712,7 +635,7 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"Или найти его по ID: {matched_user_id}"
     )
 
-# Настройка ConversationHandler
+# --- Настройка ConversationHandler ---
 def setup_registration_conversation():
     """Настройка диалога регистрации"""
     return ConversationHandler(
