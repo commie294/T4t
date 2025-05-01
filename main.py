@@ -275,25 +275,27 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if profile:
             user_id_browse, name, age, gender, bio, photo_id = profile
-            logger.info(f"Нашли профиль для просмотра: ID={user_id_browse}, Имя={name}, Возраст={age}, Пол={gender}")
+            logger.info(f"Нашли профиль для просмотра: ID={user_id_browse}, Имя={name}, Возраст={age}, Пол={gender}, Photo ID={photo_id}")
             keyboard = [
                 [InlineKeyboardButton("👍 Лайк", callback_data=f'like_{user_id_browse}')],
                 [InlineKeyboardButton("➡️ Следующая анкета", callback_data='next')],
                 [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{user_id_browse}')],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            media = InputMediaPhoto(media=photo_id, caption=f"Имя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}")
+            caption = f"Имя: {name}\nВозраст: {age}\nПол: {gender}\nО себе: {bio}"
+            logger.debug(f"Формируем InputMediaPhoto с photo_id: '{photo_id}' и caption: '{caption}'")
+            media = InputMediaPhoto(media=photo_id, caption=caption)
             try:
                 await context.bot.send_media_group(chat_id=update.message.chat_id, media=[media], reply_markup=reply_markup)
                 logger.info(f"Успешно отправили анкету пользователя ID {user_id_browse} пользователю {user_id}")
             except Exception as e:
-                logger.error(f"Ошибка при отправке медиа-группы: {e}", exc_info=True)
+                logger.error(f"Ошибка ПРИ ОТПРАВКЕ МЕДИА-ГРУППЫ: {e}", exc_info=True)
                 await update.message.reply_text("Произошла ошибка при отправке анкеты.")
         else:
             await update.message.reply_text("Пока нет доступных анкет для просмотра.")
             logger.info("Нет доступных анкет для просмотра.")
     except sqlite3.Error as e:
-        logger.error(f"Ошибка базы данных при browse_profiles: {e}", exc_info=True)
+        logger.error(f"Ошибка БАЗЫ ДАННЫХ при browse_profiles: {e}", exc_info=True)
         await update.message.reply_text("Произошла ошибка при просмотре анкет.")
     finally:
         if 'conn' in locals() and conn:
