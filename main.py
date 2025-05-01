@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 import random
 import os
@@ -12,6 +13,11 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
+
+# === НАЧАЛО КОДА ЛОГИРОВАНИЯ ===
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+# === КОНЕЦ КОДА ЛОГИРОВАНИЯ ===
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN_MEET")
@@ -274,7 +280,7 @@ def setup_registration_conversation():
             REGISTER: [MessageHandler(filters.COMMAND, register_start)],
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             GET_AGE: [MessageHandler(filters.TEXT & ~filters.TEXT, get_age)],
-            GET_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender)],
+                        GET_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender)],
             GET_GENDER_OTHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_gender_other)],
             GET_PHOTO: [MessageHandler(filters.PHOTO, get_photo)],
             GET_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_bio)],
@@ -307,6 +313,13 @@ def setup_report_conversation():
 
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
+
+    async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        logger.info(f"Received message: {update.message}")
+
+    log_handler = MessageHandler(filters.ALL, log_message)
+    application.add_handler(log_handler, group=-1) # Добавляем логгер как можно раньше
+
     reg_handler = setup_registration_conversation()
     browse_handlers = setup_browsing()
     matches_handlers = setup_matches()
