@@ -2,7 +2,14 @@ import logging
 import sqlite3
 import os
 from dotenv import load_dotenv
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InputMediaPhoto
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -13,7 +20,10 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -25,6 +35,7 @@ if not BOT_TOKEN or not ADMIN_CHAT_ID:
 
 DATABASE_NAME = 't4t_meet.db'
 
+# Состояния для ConversationHandler
 REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO = range(7)
 EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO = range(7, 14)
 REPORT, GET_REPORT_REASON = range(14, 16)
@@ -318,7 +329,10 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f'report_{liked_user_id}')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_caption(caption=query.message.caption + "\n\n❤️ Вы поставили лайк!", reply_markup=reply_markup)
+        await query.edit_message_caption(
+            caption=f"{query.message.caption}\n\n❤️ Вы поставили лайк!",
+            reply_markup=reply_markup
+        )
     except Exception as e:
         logger.error(f"Ошибка в like_profile: {e}")
         await query.answer(text="Произошла ошибка при обработке лайка.", show_alert=True)
@@ -482,17 +496,23 @@ def setup_report_conversation():
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(setup_registration_conversation())
     application.add_handler(CommandHandler("profile", show_profile))
-    application.add_handler(setup_edit_profile_conversation())
+    application.add_handler(CommandHandler("matches", show_matches))
     application.add_handler(CommandHandler("browse", browse_profiles))
+    
+    # Обработчики ConversationHandler
+    application.add_handler(setup_registration_conversation())
+    application.add_handler(setup_edit_profile_conversation())
+    application.add_handler(setup_report_conversation())
+    
+    # Обработчики callback-запросов
     application.add_handler(CallbackQueryHandler(like_profile, pattern='^like_'))
     application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
-    application.add_handler(setup_report_conversation())
-    application.add_handler(CommandHandler("matches", show_matches))
     application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
 
+    # Инициализация базы данных
     if not os.path.exists(DATABASE_NAME):
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
