@@ -14,10 +14,6 @@ def create_tables():
             age INTEGER NOT NULL,
             gender TEXT NOT NULL,
             bio TEXT,
-            interests TEXT,
-            seeking_gender TEXT,
-            seeking_age_min INTEGER,
-            seeking_age_max INTEGER,
             photo_id TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
