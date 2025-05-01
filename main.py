@@ -306,7 +306,7 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     liking_user_id = query.from_user.id
 
     conn = sqlite3.connect(DATABASE_NAME)
-        cursor = conn.cursor()
+    cursor = conn.cursor()
     try:
         cursor.execute("INSERT INTO matches (user_id_1, user_id_2) VALUES (?, ?)", (liking_user_id, liked_user_id))
         conn.commit()
