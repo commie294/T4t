@@ -6,6 +6,7 @@ def create_tables():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
+    # Таблица пользователей
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -18,10 +19,12 @@ def create_tables():
             age_preference TEXT,
             city TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_blocked BOOLEAN DEFAULT FALSE
+            is_blocked BOOLEAN DEFAULT FALSE,
+            block_reason TEXT
         )
     """)
 
+    # Таблица мэтчей
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,6 +38,7 @@ def create_tables():
         )
     """)
 
+    # Таблица жалоб
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,12 +46,13 @@ def create_tables():
             reported_user_id INTEGER NOT NULL,
             reason TEXT,
             admin_action TEXT,
+            admin_id INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (reporter_user_id) REFERENCES users(user_id),
-            FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
-        )
+            FOREIGN KEY (reported_user_id) REFERENCES users(user_id))
     """)
 
+    # Таблица просмотренных профилей
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS viewed_profiles (
             viewer_id INTEGER NOT NULL,
@@ -59,6 +64,7 @@ def create_tables():
         )
     """)
 
+    # Таблица действий администраторов
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS admin_actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,13 +73,58 @@ def create_tables():
             action_type TEXT NOT NULL,
             reason TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(user_id)
-        )
+            FOREIGN KEY (user_id) REFERENCES users(user_id))
     """)
+
+    # Индексы для ускорения запросов
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_blocked ON users(is_blocked)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reports_reported ON reports(reported_user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_users ON matches(user_id_1, user_id_2)")
 
     conn.commit()
     conn.close()
 
-if __name__ == '__main__':
+def migrate_database():
+    """Миграция существующей базы данных"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    
+    try:
+        # Проверяем существующие столбцы
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        # Добавляем недостающие столбцы
+        if 'is_blocked' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_blocked BOOLEAN DEFAULT FALSE")
+        if 'block_reason' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN block_reason TEXT")
+        
+        # Создаем таблицу admin_actions если ее нет
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='admin_actions'
+        """)
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE admin_actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    action_type TEXT NOT NULL,
+                    reason TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id))
+            """)
+        
+        conn.commit()
+        print("Миграция базы данных успешно завершена")
+    except Exception as e:
+        print(f"Ошибка при миграции базы данных: {e}")
+    finally:
+        conn.close()
+
+if __name__ == "__main__":
     create_tables()
-    print(f"Таблицы успешно созданы в файле '{DATABASE_NAME}'.")
+    migrate_database()
+    print(f"База данных '{DATABASE_NAME}' успешно инициализирована")
