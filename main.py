@@ -307,7 +307,7 @@ async def update_age_preference(update: Update, context: ContextTypes.DEFAULT_TY
         cursor.execute("UPDATE users SET age_preference = ? WHERE user_id = ?", (new_pref, user_id))
         conn.commit()
         await update.message.reply_text("✅ Возрастные предпочтения обновлены!")
-    except     Exception as e:
+    except Exception as e:
         logger.error(f"Ошибка при обновлении предпочтений: {e}")
         await update.message.reply_text("🛠 Произошла ошибка при обновлении предпочтений.")
     finally:
@@ -524,6 +524,7 @@ async def browse_my_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await browse_profiles(update, context, city_filter='my')
 
 async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.info(f"Вызвана функция next_profile с query: {update.callback_query}")
     query = update.callback_query
     await query.answer()
     for row in query.message.reply_markup.inline_keyboard:
@@ -673,8 +674,10 @@ async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return ConversationHandler.END
 
 async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"Вызвана функция handle_admin_action с query: {update.callback_query}")
     query = update.callback_query
     await query.answer()
+    logger.info(f"Данные callback_query: {query.data}")
     try:
         admin_id = int(ADMIN_CHAT_ID)
     except ValueError:
@@ -947,7 +950,7 @@ def main() -> None:
     create_tables()
     application = Application.builder().token(BOT_TOKEN).build()
     setup_handlers(application)
-    application.run_polling()
+    application.run_polling(allowed_updates=Update.ALL)
 
 if __name__ == "__main__":
     main()
