@@ -860,7 +860,7 @@ def setup_edit_profile_conversation():
 
 def setup_report_conversation():
     return ConversationHandler(
-        entry_points=[CallbackQueryHandler(report_profile, pattern='^report_')],
+        entry_points=[CallbackQueryHandler(report_profile, pattern='^report_(\d+)$')],
         states={
             GET_REPORT_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_report_reason)],
         },
@@ -877,9 +877,9 @@ def setup_handlers(application: Application) -> None:
     application.add_handler(setup_registration_conversation())
     application.add_handler(setup_edit_profile_conversation())
     application.add_handler(setup_report_conversation())
-    application.add_handler(CallbackQueryHandler(like_profile, pattern='^like_'))
+    application.add_handler(CallbackQueryHandler(like_profile, pattern='^like_(\d+)$'))
     application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
-    application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
+    application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_(\d+)$'))
     application.add_handler(CallbackQueryHandler(browse_other_cities, pattern='^other_cities$'))
     application.add_handler(CallbackQueryHandler(browse_my_city, pattern='^my_city$'))
     application.add_handler(CallbackQueryHandler(
