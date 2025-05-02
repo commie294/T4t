@@ -950,7 +950,7 @@ def main() -> None:
     create_tables()
     application = Application.builder().token(BOT_TOKEN).build()
     setup_handlers(application)
-    application.run_polling(allowed_updates=Update.ALL)
+    application.run_polling(allowed_updates=[Update.MESSAGE, Update.CALLBACK_QUERY])
 
 if __name__ == "__main__":
     main()
