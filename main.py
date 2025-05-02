@@ -271,8 +271,7 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("""
-                UPDATE users
-                SET age = ?, is_adult = ?
+                UPDATE users                 SET age = ?, is_adult = ?
                 WHERE user_id = ?
             """, (new_age, is_adult, user_id))
             conn.commit()
@@ -602,7 +601,7 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         conn.close()
 
 async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
+        query = update.callback_query
     await query.answer()
     reported_user_id = int(query.data.split('_')[1])
     conn = get_db_connection()
@@ -677,16 +676,17 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     try:
         admin_id = int(ADMIN_CHAT_ID)
-    except:
-        await query.answer("❌ Ошибка конфигурации", show_alert=True)
+    except ValueError:
+        await query.answer("❌ Ошибка конфигурации: ADMIN_CHAT_ID должен быть числом", show_alert=True)
         return
     if query.from_user.id != admin_id:
         await query.answer("❌ Только для администратора", show_alert=True)
         return
-    try:         action, user_id = query.data.split('_')
+    try:
+        action, user_id = query.data.split('_')
         user_id = int(user_id)
-    except:
-        await query.answer("❌ Неверная команда", show_alert=True)
+    except ValueError:
+        await query.answer("❌ Неверный формат команды", show_alert=True)
         return
     conn = get_db_connection()
     try:
