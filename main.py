@@ -42,11 +42,7 @@ DATABASE_NAME = 't4t_meet.db'
     EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO, EDIT_CITY,
     REPORT, GET_REPORT_REASON
 ) = range(20)
-from database_setup import initialize_database
-
-def main():
-    initialize_database()  # Эта функция теперь будет из database_setup.py
-    # Дальнейшая инициализация бота
+from database_setup import create_tables, migrate_database
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE_NAME)
@@ -1034,9 +1030,11 @@ def setup_handlers(application: Application) -> None:
     application.add_error_handler(error_handler)
 
 def main() -> None:
+    create_tables()
+    migrate_database()
+    # остальной код
     application = Application.builder().token(BOT_TOKEN).build()
     
-    initialize_database()
     setup_handlers(application)
     
     application.run_polling()
