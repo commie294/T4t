@@ -224,7 +224,242 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("❌ Ошибка при загрузке профиля")
     finally:
         conn.close()
+async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.message.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT age, is_adult FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        
+        if not result:
+            await update.message.reply_text("⚠️ Профиль не найден. Используйте /register.")
+            return ConversationHandler.END
+        
+        age = result['age']
+        is_adult = result.get('is_adult', age >= 18)
+        
+        keyboard = [
+            ["Изменить имя"],
+            ["Изменить возраст"], 
+            ["Изменить гендер"],
+            ["Изменить фото"],
+            ["Изменить описание"],
+            ["Изменить город"]
+        ]
+        
+        if is_adult:
+            keyboard.append(["Изменить возрастные предпочтения"])
+        
+        keyboard.append(["Отмена"])
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        await update.message.reply_text("Что изменить?", reply_markup=reply_markup)
+        return EDIT_PROFILE
+    except Exception as e:
+        logger.error(f"Ошибка при редактировании профиля: {e}")
+        await update.message.reply_text("🛠 Произошла ошибка. Пожалуйста, попробуйте снова.")
+        return ConversationHandler.END
+    finally:
+        conn.close()
 
+async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Введите новое имя:")
+    return EDIT_NAME
+
+async def update_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_name = update.message.text
+    user_id = update.message.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE users SET name = ? WHERE user_id = ?", (new_name, user_id))
+        conn.commit()
+        await update.message.reply_text("✅ Имя обновлено!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении имени: {e}")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении имени.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
+
+async def edit_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Введите новый возраст:")
+    return EDIT_AGE
+
+async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        new_age = int(update.message.text)
+        if 16 <= new_age <= 100:
+            user_id = update.message.from_user.id
+            is_adult = new_age >= 18
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE users 
+                SET age = ?, is_adult = ?
+                WHERE user_id = ?
+            """, (new_age, is_adult, user_id))
+            conn.commit()
+            
+            await update.message.reply_text("✅ Возраст обновлен!")
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text("Возраст должен быть от 16 до 100 лет.")
+            return EDIT_AGE
+    except ValueError:
+        await update.message.reply_text("Введите число.")
+        return EDIT_AGE
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении возраста: {e}")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении возраста.")
+        return ConversationHandler.END
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+async def edit_age_preference(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [["18-25"], ["26-35"], ["36-45"], ["46+"], ["Все 18+"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("Выберите возраст:", reply_markup=reply_markup)
+    return EDIT_AGE_PREFERENCE
+
+async def update_age_preference(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_pref = update.message.text
+    user_id = update.message.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE users SET age_preference = ? WHERE user_id = ?", (new_pref, user_id))
+        conn.commit()
+        await update.message.reply_text("✅ Возрастные предпочтения обновлены!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении предпочтений: {e}")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении предпочтений.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
+
+async def edit_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("Выберите гендер:", reply_markup=reply_markup)
+    return EDIT_GENDER
+
+async def update_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_gender = update.message.text
+    if new_gender == "Другое":
+        await update.message.reply_text("Пожалуйста, уточните вашу гендерную идентичность.")
+        return EDIT_GENDER_OTHER
+    
+    user_id = update.message.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
+        conn.commit()
+        await update.message.reply_text("✅ Гендер обновлен!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении гендера: {e}")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении гендера.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
+
+async def edit_gender_other_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_gender = update.message.text
+    user_id = update.message.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
+        conn.commit()
+        await update.message.reply_text("✅ Гендер обновлен!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении гендера: {e}")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении гендера.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
+
+async def edit_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Введите новое описание:")
+    return EDIT_BIO
+
+async def update_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_bio = update.message.text
+    user_id = update.message.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (new_bio, user_id))
+        conn.commit()
+        await update.message.reply_text("✅ Описание обновлено!")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении описания: {e}")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении описания.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
+
+async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Отправьте новое фото:")
+    return EDIT_PHOTO
+
+async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.photo:
+        new_photo = update.message.photo[-1].file_id
+        user_id = update.message.from_user.id
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("UPDATE users SET photo_id = ? WHERE user_id = ?", (new_photo, user_id))
+            conn.commit()
+            await update.message.reply_text("✅ Фото обновлено!")
+            return ConversationHandler.END
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении фото: {e}")
+            await update.message.reply_text("🛠 Произошла ошибка при обновлении фото.")
+            return EDIT_PHOTO
+        finally:
+            conn.close()
+    else:
+        await update.message.reply_text("Пожалуйста, отправьте фото.")
+        return EDIT_PHOTO
+
+async def edit_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Введите новый город (или 'нет' чтобы удалить):")
+    return EDIT_CITY
+
+async def update_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_city = update.message.text.title() if update.message.text.lower() != 'нет' else None
+    user_id = update.message.from_user.id
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE users SET city = ? WHERE user_id = ?", (new_city, user_id))
+        conn.commit()
+        await update.message.reply_text("✅ Город обновлен!" if new_city else "✅ Город удален из профиля")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении города: {e}")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении города.")
+    finally:
+        conn.close()
+        return ConversationHandler.END
+
+async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("Редактирование отменено.")
+    return ConversationHandler.END
+    
 async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE, city_filter=None) -> None:
     """Показ анкет для просмотра"""
     user_id = update.message.from_user.id if update.message else update.callback_query.from_user.id
