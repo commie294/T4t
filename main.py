@@ -600,8 +600,7 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     finally:
         conn.close()
 
-async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        query = update.callback_query
+async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: query = update.callback_query
     await query.answer()
     reported_user_id = int(query.data.split('_')[1])
     conn = get_db_connection()
