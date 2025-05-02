@@ -3,6 +3,9 @@ from typing import Optional
 
 DATABASE_NAME = 't4t_meet.db'
 
+def main():
+    initialize_database()  # Эта функция теперь будет из database_setup.py
+    # Дальнейшая инициализация бота
 def check_index_exists(cursor: sqlite3.Cursor, index_name: str) -> bool:
     """Проверяет существование индекса в базе данных"""
     cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND name=?", (index_name,))
