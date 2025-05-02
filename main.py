@@ -187,11 +187,11 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 f"Имя: {profile['name']}\n"
                 f"Возраст: {profile['age']}\n"
                 f"Гендер: {profile['gender']}\n"
-                f"Город: {profile.get('city', 'Не указан')}\n"
+                f"Город: {profile['city'] if profile['city'] else 'Не указан'}\n"
                 f"О себе: {profile['bio']}"
             )
             if profile['age'] >= 18:
-                caption += f"\n\nИщу возраст: {profile.get('age_preference', 'Не указано')}"
+                caption += f"\n\nИщу возраст: {profile['age_preference'] if profile['age_preference'] else 'Не указано'}"
             await context.bot.send_photo(
                 chat_id=update.message.chat_id,
                 photo=profile['photo_id'],
@@ -493,7 +493,7 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE, ci
             f"Имя: {profile['name']}\n"
             f"Возраст: {profile['age']}\n"
             f"Гендер: {profile['gender']}\n"
-            f"Город: {profile.get('city', 'Не указан')}\n"
+            f"Город: {profile['city'] if profile['city'] else 'Не указан'}\n"
             f"О себе: {profile['bio']}"
         )
         if update.message:
@@ -683,8 +683,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     if query.from_user.id != admin_id:
         await query.answer("❌ Только для администратора", show_alert=True)
         return
-    try:
-        action, user_id = query.data.split('_')
+    try:         action, user_id = query.data.split('_')
         user_id = int(user_id)
     except:
         await query.answer("❌ Неверная команда", show_alert=True)
