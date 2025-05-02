@@ -42,6 +42,11 @@ DATABASE_NAME = 't4t_meet.db'
     EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO, EDIT_CITY,
     REPORT, GET_REPORT_REASON
 ) = range(20)
+from database_setup import initialize_database
+
+def main():
+    initialize_database()  # Эта функция теперь будет из database_setup.py
+    # Дальнейшая инициализация бота
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE_NAME)
@@ -995,6 +1000,16 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "Произошла ошибка. Пожалуйста, попробуйте позже или обратитесь к администратору."
         )
 
+def setup_report_conversation():
+    return ConversationHandler(
+        entry_points=[CallbackQueryHandler(report_profile, pattern='^report_')],
+        states={
+            GET_REPORT_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_report_reason)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_edit)],
+        allow_reentry=True
+    )
+    
 def setup_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -1017,73 +1032,6 @@ def setup_handlers(application: Application) -> None:
     ))
     
     application.add_error_handler(error_handler)
-
-def initialize_database():
-    if not os.path.exists(DATABASE_NAME):
-        conn = sqlite3.connect(DATABASE_NAME)
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
-                CREATE TABLE users (
-                    user_id INTEGER PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    age INTEGER NOT NULL,
-                    gender TEXT NOT NULL,
-                    bio TEXT,
-                    photo_id TEXT NOT NULL,
-                    is_adult BOOLEAN DEFAULT FALSE,
-                    age_preference TEXT,
-                    city TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_blocked BOOLEAN DEFAULT FALSE
-                )
-            """)
-            
-            cursor.execute("""
-                CREATE TABLE matches (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id_1 INTEGER NOT NULL,
-                    user_id_2 INTEGER NOT NULL,
-                    is_match BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id_1) REFERENCES users(user_id),
-                    FOREIGN KEY (user_id_2) REFERENCES users(user_id),
-                    UNIQUE(user_id_1, user_id_2)
-                )
-            """)
-            
-            cursor.execute("""
-                CREATE TABLE reports (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    reporter_user_id INTEGER NOT NULL,
-                    reported_user_id INTEGER NOT NULL,
-                    reason TEXT NOT NULL,
-                    admin_action TEXT,
-                    admin_id INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (reporter_user_id) REFERENCES users(user_id),
-                    FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
-                )
-            """)
-            
-            cursor.execute("""
-                CREATE TABLE viewed_profiles (
-                    viewer_id INTEGER NOT NULL,
-                    viewed_id INTEGER NOT NULL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (viewer_id) REFERENCES users(user_id),
-                    FOREIGN KEY (viewed_id) REFERENCES users(user_id),
-                    PRIMARY KEY (viewer_id, viewed_id)
-                )
-            """)
-            
-            conn.commit()
-            logger.info("База данных успешно инициализирована")
-        except Exception as e:
-            logger.error(f"Ошибка при инициализации базы данных: {e}")
-        finally:
-            conn.close()
 
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
