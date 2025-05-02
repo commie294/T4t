@@ -17,7 +17,8 @@ def create_tables():
             is_adult BOOLEAN DEFAULT FALSE,
             age_preference TEXT,
             city TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_blocked BOOLEAN DEFAULT FALSE
         )
     """)
 
@@ -40,10 +41,10 @@ def create_tables():
             reporter_user_id INTEGER NOT NULL,
             reported_user_id INTEGER NOT NULL,
             reason TEXT,
+            admin_action TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (reporter_user_id) REFERENCES users(user_id),
-            FOREIGN KEY (reported_user_id) REFERENCES users(user_id),
-            UNIQUE(reporter_user_id, reported_user_id)
+            FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
         )
     """)
 
@@ -58,9 +59,21 @@ def create_tables():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            admin_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            action_type TEXT NOT NULL,
+            reason TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
 if __name__ == '__main__':
     create_tables()
-    print(f"Таблицы 'users', 'matches', 'reports' и 'viewed_profiles' успешно созданы в файле '{DATABASE_NAME}'.")
+    print(f"Таблицы успешно созданы в файле '{DATABASE_NAME}'.")
