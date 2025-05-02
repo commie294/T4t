@@ -8,7 +8,8 @@ from telegram import (
     KeyboardButton,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    InputMediaPhoto
+    InputMediaPhoto,
+    ReplyKeyboardRemove
 )
 from telegram.ext import (
     Application,
@@ -565,14 +566,14 @@ async def browse_other_cities(update: Update, context: ContextTypes.DEFAULT_TYPE
     cursor = conn.cursor()
     
     try:
-        cursor.execute("SELECT is_adult, age_preference FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT is_adult, age_preference, city FROM users WHERE user_id = ?", (user_id,))
         user_data = cursor.fetchone()
         
         if not user_data:
             await query.edit_message_text("Ошибка: данные пользователя не найдены.")
             return
             
-        is_adult, age_preference = user_data
+        is_adult, age_preference, user_city = user_data
         
         query_sql = """
             SELECT u.user_id, u.name, u.age, u.gender, u.bio, u.photo_id, u.city
@@ -580,13 +581,15 @@ async def browse_other_cities(update: Update, context: ContextTypes.DEFAULT_TYPE
             LEFT JOIN viewed_profiles v ON u.user_id = v.viewed_id AND v.viewer_id = ?
             WHERE u.user_id != ? 
             AND u.is_adult = ?
+            AND (u.city IS NULL OR lower(u.city) != lower(?))
             AND u.user_id NOT IN (
                 SELECT reported_user_id FROM reports 
                 WHERE reporter_user_id = ?
                 LIMIT 100
             )
+            AND (v.viewed_id IS NULL OR v.timestamp < datetime('now', '-7 days'))
         """
-        params = [user_id, user_id, is_adult, user_id]
+        params = [user_id, user_id, is_adult, user_city or '', user_id]
         
         if is_adult and age_preference and age_preference != "Все 18+":
             age_ranges = {
@@ -605,6 +608,22 @@ async def browse_other_cities(update: Update, context: ContextTypes.DEFAULT_TYPE
         cursor.execute(query_sql, params)
         profile = cursor.fetchone()
 
+        if not profile:
+            cursor.execute("""
+                SELECT u.user_id, u.name, u.age, u.gender, u.bio, u.photo_id, u.city
+                FROM users u
+                WHERE u.user_id != ? 
+                AND u.is_adult = ?
+                AND u.user_id NOT IN (
+                    SELECT reported_user_id FROM reports 
+                    WHERE reporter_user_id = ?
+                    LIMIT 100
+                )
+                ORDER BY RANDOM()
+                LIMIT 1
+            """, (user_id, is_adult, user_id))
+            profile = cursor.fetchone()
+
         if profile:
             user_id_browse, name, age, gender, bio, photo_id, city = profile
             cursor.execute("""
@@ -622,17 +641,23 @@ async def browse_other_cities(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             caption = f"Имя: {name}\nВозраст: {age}\nГендер: {gender}\nГород: {city or 'Не указан'}\nО себе: {bio}"
-            await query.edit_message_caption(
-                caption=caption,
+            
+            await query.message.edit_media(
+                media=InputMediaPhoto(media=photo_id, caption=caption),
                 reply_markup=reply_markup
             )
         else:
-            await query.edit_message_text("🔍 Нет доступных анкет.")
+            await query.answer("🔍 Нет доступных анкет в других городах", show_alert=True)
     except Exception as e:
         logger.error(f"Ошибка в browse_other_cities: {e}", exc_info=True)
-        await query.answer("🛠 Ошибка при загрузке анкет")
+        await query.answer("🛠 Ошибка при загрузке анкет", show_alert=True)
     finally:
         conn.close()
+
+async def browse_my_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    await browse_profiles(update, context)
 
 async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -1016,7 +1041,7 @@ def setup_handlers(application: Application) -> None:
     application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
     application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
     application.add_handler(CallbackQueryHandler(browse_other_cities, pattern='^other_cities$'))
-    application.add_handler(CallbackQueryHandler(browse_profiles, pattern='^my_city$'))
+    application.add_handler(CallbackQueryHandler(browse_my_city, pattern='^my_city$'))
     application.add_handler(CallbackQueryHandler(
         handle_admin_action, 
         pattern=r'^(block|warn|ignore)_\d+$'
