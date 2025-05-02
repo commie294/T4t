@@ -51,6 +51,7 @@ def get_db_connection():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     rules = (
         "Добро пожаловать в T4t Meet!\n\n"
+        "Подпишись на наш канал: https://t.me/tperehod\n\n"
         "Пожалуйста, ознакомьтесь с нашими правилами:\n"
         "1. Будьте уважительны к другим участникам.\n"
         "2. Запрещены оскорбления, дискриминация и нетерпимость. Анкеты цисгендеров будут блокироваться.\n"
@@ -748,52 +749,133 @@ async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     reporter_id = update.message.from_user.id
     reported_id = context.user_data.get('reported_user_id')
     
-    if reported_id:
-        conn = get_db_connection()
+    if not reported_id:
+        await update.message.reply_text("Ошибка: не найден ID пользователя для жалобы")
+        return ConversationHandler.END
+    
+    conn = get_db_connection()
+    try:
         cursor = conn.cursor()
         
-        try:
-            cursor.execute("""
-                SELECT 1 FROM reports 
-                WHERE reporter_user_id = ? AND reported_user_id = ?
-                LIMIT 1
-            """, (reporter_id, reported_id))
+        cursor.execute("""
+            SELECT 1 FROM reports 
+            WHERE reporter_user_id = ? AND reported_user_id = ?
+            LIMIT 1
+        """, (reporter_id, reported_id))
+        
+        if cursor.fetchone():
+            await update.message.reply_text("Вы уже жаловались на этого пользователя.")
+            return ConversationHandler.END
             
-            if cursor.fetchone():
-                await update.message.reply_text("Вы уже жаловались на этого пользователя.")
-                return ConversationHandler.END
-                
-            cursor.execute("""
-                INSERT INTO reports 
-                (reporter_user_id, reported_user_id, reason) 
-                VALUES (?, ?, ?)
-            """, (reporter_id, reported_id, reason))
-            
-            cursor.execute("SELECT name FROM users WHERE user_id = ?", (reporter_id,))
-            reporter_name = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT name FROM users WHERE user_id = ?", (reported_id,))
-            reported_name = cursor.fetchone()[0]
-            
-            conn.commit()
-            
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=f"Жалоба от {reporter_name} (ID: {reporter_id})\n"
-                     f"На пользователя {reported_name} (ID: {reported_id})\n"
-                     f"Причина: {reason}"
-            )
-            
-            await update.message.reply_text("Жалоба отправлена администратору.")
-        except Exception as e:
-            logger.error(f"Ошибка в get_report_reason: {e}", exc_info=True)
-            await update.message.reply_text("Ошибка при отправке жалобы.")
-        finally:
-            conn.close()
-    else:
-        await update.message.reply_text("Ошибка обработки жалобы.")
+        cursor.execute("""
+            INSERT INTO reports 
+            (reporter_user_id, reported_user_id, reason) 
+            VALUES (?, ?, ?)
+        """, (reporter_id, reported_id, reason))
+        
+        cursor.execute("SELECT name FROM users WHERE user_id = ?", (reporter_id,))
+        reporter_result = cursor.fetchone()
+        reporter_name = reporter_result['name'] if reporter_result else "Unknown"
+        
+        cursor.execute("SELECT name FROM users WHERE user_id = ?", (reported_id,))
+        reported_result = cursor.fetchone()
+        reported_name = reported_result['name'] if reported_result else "Unknown"
+        
+        conn.commit()
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔨 Заблокировать", callback_data=f'block_{reported_id}'),
+                InlineKeyboardButton("⚠️ Предупредить", callback_data=f'warn_{reported_id}')
+            ],
+            [
+                InlineKeyboardButton("❌ Отклонить жалобу", callback_data=f'ignore_{reported_id}')
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=f"🚨 Новая жалоба:\n"
+                 f"От: {reporter_name} (ID: {reporter_id})\n"
+                 f"На: {reported_name} (ID: {reported_id})\n"
+                 f"Причина: {reason}",
+            reply_markup=reply_markup
+        )
+        
+        await update.message.reply_text("✅ Жалоба отправлена администраторам")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при обработке жалобы: {e}")
+        await update.message.reply_text("❌ Ошибка при отправке жалобы. Попробуйте позже.")
+    finally:
+        conn.close()
     
     return ConversationHandler.END
+
+async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if str(query.from_user.id) != ADMIN_CHAT_ID:
+        await query.answer("Только администратор может выполнять это действие", show_alert=True)
+        return
+    
+    action, user_id = query.data.split('_')
+    user_id = int(user_id)
+    admin_id = query.from_user.id
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        if action == 'block':
+            cursor.execute("UPDATE users SET is_blocked = TRUE WHERE user_id = ?", (user_id,))
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="❌ Ваш аккаунт заблокирован администратором"
+                )
+            except Exception as e:
+                logger.error(f"Не удалось уведомить пользователя: {e}")
+                
+            action_text = "заблокирован"
+            
+        elif action == 'warn':
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="⚠️ Вы получили предупреждение от администратора"
+                )
+            except Exception as e:
+                logger.error(f"Не удалось отправить предупреждение: {e}")
+                
+            action_text = "получил предупреждение"
+        
+        elif action == 'ignore':
+            action_text = "жалоба отклонена"
+        
+        cursor.execute("""
+            UPDATE reports 
+            SET admin_action = ?
+            WHERE reported_user_id = ?
+            ORDER BY created_at DESC 
+            LIMIT 1
+        """, (f"{action} by admin {admin_id}", user_id))
+        
+        conn.commit()
+        
+        await query.edit_message_text(
+            text=f"✅ Действие выполнено: пользователь {user_id} {action_text}",
+            reply_markup=None
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка обработки действия админа: {e}")
+        await query.answer("Ошибка при обработке действия", show_alert=True)
+    finally:
+        conn.close()
 
 async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.message.from_user.id
@@ -880,7 +962,7 @@ def setup_edit_profile_conversation():
             ],
             EDIT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_name)],
             EDIT_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_age)],
-            EDIT_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_gender)],
+            EDIT_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_gender)],         
             EDIT_GENDER_OTHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_gender_other_input)],
             EDIT_PHOTO: [MessageHandler(filters.PHOTO, update_photo)],
             EDIT_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_bio)],
@@ -889,22 +971,33 @@ def setup_edit_profile_conversation():
         },
         fallbacks=[CommandHandler("cancel", cancel_edit)],
         allow_reentry=True
+        )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    help_text = (
+        "Список доступных команд:\n"
+        "/start - Начало работы с ботом\n"
+        "/register - Регистрация профиля\n"
+        "/profile - Просмотр своего профиля\n"
+        "/edit_profile - Редактирование профиля\n"
+        "/browse - Просмотр анкет\n"
+        "/matches - Ваши мэтчи\n"
+        "/help - Справка по командам\n\n"
+        "По всем вопросам обращайтесь к администратору."
     )
+    await update.message.reply_text(help_text)
 
-def setup_report_conversation():
-    return ConversationHandler(
-        entry_points=[CallbackQueryHandler(report_profile, pattern='^report_')],
-        states={
-            GET_REPORT_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_report_reason)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_edit)],
-        allow_reentry=True
-    )
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Ошибка при обработке запроса:", exc_info=context.error)
+    
+    if update and update.message:
+        await update.message.reply_text(
+            "Произошла ошибка. Пожалуйста, попробуйте позже или обратитесь к администратору."
+        )
 
-def main() -> None:
-    application = Application.builder().token(BOT_TOKEN).build()
-
+def setup_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("profile", show_profile))
     application.add_handler(CommandHandler("matches", show_matches))
     application.add_handler(CommandHandler("browse", browse_profiles))
@@ -918,7 +1011,14 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
     application.add_handler(CallbackQueryHandler(browse_other_cities, pattern='^other_cities$'))
     application.add_handler(CallbackQueryHandler(browse_profiles, pattern='^my_city$'))
+    application.add_handler(CallbackQueryHandler(
+        handle_admin_action, 
+        pattern=r'^(block|warn|ignore)_\d+$'
+    ))
+    
+    application.add_error_handler(error_handler)
 
+def initialize_database():
     if not os.path.exists(DATABASE_NAME):
         conn = sqlite3.connect(DATABASE_NAME)
         cursor = conn.cursor()
@@ -935,7 +1035,8 @@ def main() -> None:
                     is_adult BOOLEAN DEFAULT FALSE,
                     age_preference TEXT,
                     city TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_blocked BOOLEAN DEFAULT FALSE
                 )
             """)
             
@@ -957,11 +1058,12 @@ def main() -> None:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     reporter_user_id INTEGER NOT NULL,
                     reported_user_id INTEGER NOT NULL,
-                    reason TEXT,
+                    reason TEXT NOT NULL,
+                    admin_action TEXT,
+                    admin_id INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (reporter_user_id) REFERENCES users(user_id),
-                    FOREIGN KEY (reported_user_id) REFERENCES users(user_id),
-                    UNIQUE(reporter_user_id, reported_user_id)
+                    FOREIGN KEY (reported_user_id) REFERENCES users(user_id)
                 )
             """)
             
@@ -983,6 +1085,12 @@ def main() -> None:
         finally:
             conn.close()
 
+def main() -> None:
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    initialize_database()
+    setup_handlers(application)
+    
     application.run_polling()
 
 if __name__ == "__main__":
