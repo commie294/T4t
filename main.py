@@ -42,12 +42,16 @@ DATABASE_NAME = 't4t_meet.db'
     EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_BIO, EDIT_PHOTO, EDIT_CITY,
     REPORT, GET_REPORT_REASON
 ) = range(20)
-from database_setup import create_tables, migrate_database
 
 def get_db_connection():
-    conn = sqlite3.connect(DATABASE_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+    except Exception as e:
+        logger.error(f"Ошибка подключения к БД: {e}")
+        raise
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     rules = (
@@ -170,7 +174,7 @@ async def get_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text("Профиль создан! Теперь вы можете просматривать анкеты других пользователей с помощью /browse.")
     except Exception as e:
         logger.error(f"Ошибка при создании профиля: {e}")
-        await update.message.reply_text("Произошла ошибка при создании профиля. Пожалуйста, попробуйте снова.")
+        await update.message.reply_text("🛠 Произошла ошибка при создании профиля. Пожалуйста, попробуйте снова.")
     finally:
         conn.close()
         context.user_data.clear()
@@ -182,18 +186,6 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     cursor = conn.cursor()
     
     try:
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [column[1] for column in cursor.fetchall()]
-        
-        if 'age_preference' not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN age_preference TEXT")
-        if 'is_adult' not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN is_adult BOOLEAN DEFAULT FALSE")
-        if 'city' not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN city TEXT")
-        
-        conn.commit()
-        
         cursor.execute("""
             SELECT name, age, gender, bio, photo_id, age_preference, city 
             FROM users WHERE user_id = ?
@@ -219,10 +211,10 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 caption=caption
             )
         else:
-            await update.message.reply_text("Профиль не найден. Используйте /register для создания профиля.")
+            await update.message.reply_text("⚠️ Профиль не найден. Используйте /register для создания профиля.")
     except Exception as e:
         logger.error(f"Ошибка при показе профиля: {e}")
-        await update.message.reply_text("Произошла ошибка при загрузке профиля.")
+        await update.message.reply_text("🛠 Произошла ошибка при загрузке профиля.")
     finally:
         conn.close()
 
@@ -232,19 +224,11 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     cursor = conn.cursor()
     
     try:
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [column[1] for column in cursor.fetchall()]
-        if 'is_adult' not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN is_adult BOOLEAN DEFAULT FALSE")
-        if 'city' not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN city TEXT")
-            conn.commit()
-        
         cursor.execute("SELECT age, is_adult FROM users WHERE user_id = ?", (user_id,))
         result = cursor.fetchone()
         
         if not result:
-            await update.message.reply_text("Профиль не найден. Используйте /register.")
+            await update.message.reply_text("⚠️ Профиль не найден. Используйте /register.")
             return ConversationHandler.END
         
         age = result['age']
@@ -269,7 +253,7 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         return EDIT_PROFILE
     except Exception as e:
         logger.error(f"Ошибка при редактировании профиля: {e}")
-        await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте снова.")
+        await update.message.reply_text("🛠 Произошла ошибка. Пожалуйста, попробуйте снова.")
         return ConversationHandler.END
     finally:
         conn.close()
@@ -287,10 +271,10 @@ async def update_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     try:
         cursor.execute("UPDATE users SET name = ? WHERE user_id = ?", (new_name, user_id))
         conn.commit()
-        await update.message.reply_text("Имя обновлено!")
+        await update.message.reply_text("✅ Имя обновлено!")
     except Exception as e:
         logger.error(f"Ошибка при обновлении имени: {e}")
-        await update.message.reply_text("Произошла ошибка при обновлении имени.")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении имени.")
     finally:
         conn.close()
         return ConversationHandler.END
@@ -315,7 +299,7 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             """, (new_age, is_adult, user_id))
             conn.commit()
             
-            await update.message.reply_text("Возраст обновлен!")
+            await update.message.reply_text("✅ Возраст обновлен!")
             return ConversationHandler.END
         else:
             await update.message.reply_text("Возраст должен быть от 16 до 100 лет.")
@@ -325,7 +309,7 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return EDIT_AGE
     except Exception as e:
         logger.error(f"Ошибка при обновлении возраста: {e}")
-        await update.message.reply_text("Произошла ошибка при обновлении возраста.")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении возраста.")
         return ConversationHandler.END
     finally:
         if 'conn' in locals():
@@ -344,17 +328,12 @@ async def update_age_preference(update: Update, context: ContextTypes.DEFAULT_TY
     cursor = conn.cursor()
     
     try:
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [column[1] for column in cursor.fetchall()]
-        if 'age_preference' not in columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN age_preference TEXT")
-        
         cursor.execute("UPDATE users SET age_preference = ? WHERE user_id = ?", (new_pref, user_id))
         conn.commit()
-        await update.message.reply_text("Возрастные предпочтения обновлены!")
+        await update.message.reply_text("✅ Возрастные предпочтения обновлены!")
     except Exception as e:
         logger.error(f"Ошибка при обновлении предпочтений: {e}")
-        await update.message.reply_text("Произошла ошибка при обновлении предпочтений.")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении предпочтений.")
     finally:
         conn.close()
         return ConversationHandler.END
@@ -378,10 +357,10 @@ async def update_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     try:
         cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
         conn.commit()
-        await update.message.reply_text("Гендер обновлен!")
+        await update.message.reply_text("✅ Гендер обновлен!")
     except Exception as e:
         logger.error(f"Ошибка при обновлении гендера: {e}")
-        await update.message.reply_text("Произошла ошибка при обновлении гендера.")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении гендера.")
     finally:
         conn.close()
         return ConversationHandler.END
@@ -395,10 +374,10 @@ async def edit_gender_other_input(update: Update, context: ContextTypes.DEFAULT_
     try:
         cursor.execute("UPDATE users SET gender = ? WHERE user_id = ?", (new_gender, user_id))
         conn.commit()
-        await update.message.reply_text("Гендер обновлен!")
+        await update.message.reply_text("✅ Гендер обновлен!")
     except Exception as e:
         logger.error(f"Ошибка при обновлении гендера: {e}")
-        await update.message.reply_text("Произошла ошибка при обновлении гендера.")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении гендера.")
     finally:
         conn.close()
         return ConversationHandler.END
@@ -416,10 +395,10 @@ async def update_bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         cursor.execute("UPDATE users SET bio = ? WHERE user_id = ?", (new_bio, user_id))
         conn.commit()
-        await update.message.reply_text("Описание обновлено!")
+        await update.message.reply_text("✅ Описание обновлено!")
     except Exception as e:
         logger.error(f"Ошибка при обновлении описания: {e}")
-        await update.message.reply_text("Произошла ошибка при обновлении описания.")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении описания.")
     finally:
         conn.close()
         return ConversationHandler.END
@@ -438,11 +417,11 @@ async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         try:
             cursor.execute("UPDATE users SET photo_id = ? WHERE user_id = ?", (new_photo, user_id))
             conn.commit()
-            await update.message.reply_text("Фото обновлено!")
+            await update.message.reply_text("✅ Фото обновлено!")
             return ConversationHandler.END
         except Exception as e:
             logger.error(f"Ошибка при обновлении фото: {e}")
-            await update.message.reply_text("Произошла ошибка при обновлении фото.")
+            await update.message.reply_text("🛠 Произошла ошибка при обновлении фото.")
             return EDIT_PHOTO
         finally:
             conn.close()
@@ -463,10 +442,10 @@ async def update_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     try:
         cursor.execute("UPDATE users SET city = ? WHERE user_id = ?", (new_city, user_id))
         conn.commit()
-        await update.message.reply_text("Город обновлен!" if new_city else "Город удален из профиля")
+        await update.message.reply_text("✅ Город обновлен!" if new_city else "✅ Город удален из профиля")
     except Exception as e:
         logger.error(f"Ошибка при обновлении города: {e}")
-        await update.message.reply_text("Произошла ошибка при обновлении города.")
+        await update.message.reply_text("🛠 Произошла ошибка при обновлении города.")
     finally:
         conn.close()
         return ConversationHandler.END
@@ -571,10 +550,10 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 reply_markup=reply_markup
             )
         else:
-            await update.message.reply_text("Нет доступных анкет. Попробуйте изменить критерии поиска в /edit_profile или попробуйте позже.")
+            await update.message.reply_text("🔍 Нет доступных анкет. Попробуйте изменить критерии поиска в /edit_profile или попробуйте позже.")
     except Exception as e:
         logger.error(f"Ошибка в browse_profiles: {e}", exc_info=True)
-        await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте позже.")
+        await update.message.reply_text("🛠 Произошла ошибка. Пожалуйста, попробуйте позже.")
     finally:
         conn.close()
 
@@ -648,10 +627,10 @@ async def browse_other_cities(update: Update, context: ContextTypes.DEFAULT_TYPE
                 reply_markup=reply_markup
             )
         else:
-            await query.edit_message_text("Нет доступных анкет.")
+            await query.edit_message_text("🔍 Нет доступных анкет.")
     except Exception as e:
         logger.error(f"Ошибка в browse_other_cities: {e}", exc_info=True)
-        await query.answer("Ошибка при загрузке анкет")
+        await query.answer("🛠 Ошибка при загрузке анкет")
     finally:
         conn.close()
 
@@ -702,11 +681,11 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             
             await context.bot.send_message(
                 chat_id=liked_user_id,
-                text=f"У вас мэтч с {liking_name}!"
+                text=f"🎉 У вас мэтч с {liking_name}!"
             )
             await context.bot.send_message(
                 chat_id=liking_user_id,
-                text=f"У вас мэтч с {liked_name}!"
+                text=f"🎉 У вас мэтч с {liked_name}!"
             )
         
         conn.commit()
@@ -723,7 +702,7 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
     except Exception as e:
         logger.error(f"Ошибка в like_profile: {e}", exc_info=True)
-        await query.answer("Ошибка при обработке лайка.", show_alert=True)
+        await query.answer("🛠 Ошибка при обработке лайка.", show_alert=True)
     finally:
         conn.close()
 
@@ -737,13 +716,31 @@ async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
     
     reported_user_id = int(query.data.split('_')[1])
-    context.user_data['reported_user_id'] = reported_user_id
     
-    await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text="Опишите причину жалобы:"
-    )
-    return GET_REPORT_REASON
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT 1 FROM reports 
+            WHERE reporter_user_id = ? AND reported_user_id = ?
+        """, (query.from_user.id, reported_user_id))
+        
+        if cursor.fetchone():
+            await query.edit_message_text("⚠️ Вы уже отправляли жалобу на этого пользователя.")
+            return ConversationHandler.END
+            
+        context.user_data['reported_user_id'] = reported_user_id
+        await query.message.reply_text(
+            "📝 Опишите причину жалобы (например: спам, оскорбления, фейковый профиль):",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return GET_REPORT_REASON
+    except Exception as e:
+        logger.error(f"Ошибка в report_profile: {e}")
+        await query.message.reply_text("🔴 Системная ошибка при обработке жалобы. Попробуйте позже.")
+        return ConversationHandler.END
+    finally:
+        conn.close()
 
 async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reason = update.message.text
@@ -758,16 +755,6 @@ async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         cursor = conn.cursor()
         
-        cursor.execute("""
-            SELECT 1 FROM reports 
-            WHERE reporter_user_id = ? AND reported_user_id = ?
-            LIMIT 1
-        """, (reporter_id, reported_id))
-        
-        if cursor.fetchone():
-            await update.message.reply_text("Вы уже жаловались на этого пользователя.")
-            return ConversationHandler.END
-            
         cursor.execute("""
             INSERT INTO reports 
             (reporter_user_id, reported_user_id, reason) 
@@ -833,16 +820,23 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         if action == 'block':
             cursor.execute("UPDATE users SET is_blocked = TRUE WHERE user_id = ?", (user_id,))
             
+            cursor.execute("""
+                UPDATE reports 
+                SET admin_action = 'blocked', 
+                    admin_id = ?
+                WHERE reported_user_id = ?
+            """, (admin_id, user_id))
+            
             try:
                 await context.bot.send_message(
                     chat_id=user_id,
-                    text="❌ Ваш аккаунт заблокирован администратором"
+                    text="❌ Ваш аккаунт был заблокирован за нарушение правил"
                 )
             except Exception as e:
                 logger.error(f"Не удалось уведомить пользователя: {e}")
-                
-            action_text = "заблокирован"
             
+            await query.edit_message_text(f"✅ Пользователь {user_id} заблокирован")
+        
         elif action == 'warn':
             try:
                 await context.bot.send_message(
@@ -852,25 +846,26 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             except Exception as e:
                 logger.error(f"Не удалось отправить предупреждение: {e}")
                 
-            action_text = "получил предупреждение"
+            cursor.execute("""
+                UPDATE reports 
+                SET admin_action = 'warned', 
+                    admin_id = ?
+                WHERE reported_user_id = ?
+            """, (admin_id, user_id))
+            
+            await query.edit_message_text(f"✅ Пользователь {user_id} получил предупреждение")
         
         elif action == 'ignore':
-            action_text = "жалоба отклонена"
-        
-        cursor.execute("""
-            UPDATE reports 
-            SET admin_action = ?
-            WHERE reported_user_id = ?
-            ORDER BY created_at DESC 
-            LIMIT 1
-        """, (f"{action} by admin {admin_id}", user_id))
+            cursor.execute("""
+                UPDATE reports 
+                SET admin_action = 'ignored', 
+                    admin_id = ?
+                WHERE reported_user_id = ?
+            """, (admin_id, user_id))
+            
+            await query.edit_message_text(f"✅ Жалоба на пользователя {user_id} отклонена")
         
         conn.commit()
-        
-        await query.edit_message_text(
-            text=f"✅ Действие выполнено: пользователь {user_id} {action_text}",
-            reply_markup=None
-        )
         
     except Exception as e:
         logger.error(f"Ошибка обработки действия админа: {e}")
@@ -913,10 +908,10 @@ async def show_matches(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     reply_markup=reply_markup
                 )
         else:
-            await update.message.reply_text("У вас пока нет мэтчей.")
+            await update.message.reply_text("🔍 У вас пока нет мэтчей. Продолжайте просматривать анкеты!")
     except Exception as e:
         logger.error(f"Ошибка в show_matches: {e}", exc_info=True)
-        await update.message.reply_text("Ошибка при загрузке мэтчей.")
+        await update.message.reply_text("🛠 Ошибка при загрузке мэтчей.")
     finally:
         conn.close()
 
@@ -929,6 +924,28 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"Вы можете написать пользователю в Telegram: @{query.from_user.username}\n"
         f"Или найти его по ID: {matched_user_id}"
     )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    help_text = (
+        "Список доступных команд:\n"
+        "/start - Начало работы с ботом\n"
+        "/register - Регистрация профиля\n"
+        "/profile - Просмотр своего профиля\n"
+        "/edit_profile - Редактирование профиля\n"
+        "/browse - Просмотр анкет\n"
+        "/matches - Ваши мэтчи\n"
+        "/help - Справка по командам\n\n"
+        "По всем вопросам обращайтесь к администратору."
+    )
+    await update.message.reply_text(help_text)
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Ошибка при обработке запроса:", exc_info=context.error)
+    
+    if update and update.message:
+        await update.message.reply_text(
+            "🛠 Произошла ошибка. Пожалуйста, попробуйте позже или обратитесь к администратору."
+        )
 
 def setup_registration_conversation():
     return ConversationHandler(
@@ -974,28 +991,6 @@ def setup_edit_profile_conversation():
         allow_reentry=True
         )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    help_text = (
-        "Список доступных команд:\n"
-        "/start - Начало работы с ботом\n"
-        "/register - Регистрация профиля\n"
-        "/profile - Просмотр своего профиля\n"
-        "/edit_profile - Редактирование профиля\n"
-        "/browse - Просмотр анкет\n"
-        "/matches - Ваши мэтчи\n"
-        "/help - Справка по командам\n\n"
-        "По всем вопросам обращайтесь к администратору."
-    )
-    await update.message.reply_text(help_text)
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error("Ошибка при обработке запроса:", exc_info=context.error)
-    
-    if update and update.message:
-        await update.message.reply_text(
-            "Произошла ошибка. Пожалуйста, попробуйте позже или обратитесь к администратору."
-        )
-
 def setup_report_conversation():
     return ConversationHandler(
         entry_points=[CallbackQueryHandler(report_profile, pattern='^report_')],
@@ -1030,9 +1025,10 @@ def setup_handlers(application: Application) -> None:
     application.add_error_handler(error_handler)
 
 def main() -> None:
+    from database_setup import create_tables, migrate_database
     create_tables()
     migrate_database()
-    # остальной код
+    
     application = Application.builder().token(BOT_TOKEN).build()
     
     setup_handlers(application)
