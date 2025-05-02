@@ -271,7 +271,8 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("""
-                UPDATE users                 SET age = ?, is_adult = ?
+                UPDATE users
+                SET age = ?, is_adult = ?
                 WHERE user_id = ?
             """, (new_age, is_adult, user_id))
             conn.commit()
@@ -306,7 +307,7 @@ async def update_age_preference(update: Update, context: ContextTypes.DEFAULT_TY
         cursor.execute("UPDATE users SET age_preference = ? WHERE user_id = ?", (new_pref, user_id))
         conn.commit()
         await update.message.reply_text("✅ Возрастные предпочтения обновлены!")
-    except Exception as e:
+    except     Exception as e:
         logger.error(f"Ошибка при обновлении предпочтений: {e}")
         await update.message.reply_text("🛠 Произошла ошибка при обновлении предпочтений.")
     finally:
@@ -600,7 +601,8 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     finally:
         conn.close()
 
-async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: query = update.callback_query
+async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
     await query.answer()
     reported_user_id = int(query.data.split('_')[1])
     conn = get_db_connection()
