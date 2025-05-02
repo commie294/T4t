@@ -43,6 +43,7 @@ REPORT, GET_REPORT_REASON = range(14, 16)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     rules = (
         "Добро пожаловать в T4t Meet!\n\n"
+        "подпишитесь на наш канал: https://t.me/tperehod"
         "Пожалуйста, ознакомьтесь с нашими правилами:\n"
         "1. Будьте уважительны к другим участникам.\n"
         "2. Запрещены оскорбления, дискриминация и нетерпимость. Анкеты цисгендеров будут блокироваться.\n"
