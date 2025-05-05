@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
+ADMIN_CHAT_ID = ('ADMIN_CHAT_ID')
 
 # Debug: Print the loaded BOT_TOKEN to verify
 print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
@@ -67,12 +67,16 @@ def load_db():
         # Create the file to ensure it exists for future operations
         with open(DB_FILE, 'w', encoding='utf-8') as f:
             json.dump(default_db, f, ensure_ascii=False, indent=2)
+        logger.info("Initialized new database with empty users array")
         return default_db
 
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
         logger.info(f"Successfully loaded database from {DB_FILE}")
+        logger.info(f"Number of users in database: {len(data['users'])}")
+        if len(data['users']) > 0:
+            logger.info(f"Sample user: {data['users'][0]}")
         return data
     except (json.JSONDecodeError, IOError) as e:
         logger.error(f"Failed to load database from {DB_FILE}: {e}")
@@ -83,6 +87,7 @@ def load_db():
                 with open(DB_BACKUP_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 logger.info(f"Successfully loaded backup database")
+                logger.info(f"Number of users in backup database: {len(data['users'])}")
                 # Restore the main database from backup
                 with open(DB_FILE, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
@@ -144,20 +149,29 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     command = query.data
-    print(f"Menu button clicked: {command}")
+    logger.info(f"Menu button clicked by user {query.from_user.id}: {command}")
 
     if command == "menu_register":
+        logger.info("Routing to register_start")
         return await register_start(update, context)
     elif command == "menu_browse":
+        logger.info("Routing to browse_profiles")
         return await browse_profiles(update, context)
     elif command == "menu_matches":
+        logger.info("Routing to matches")
         return await matches(update, context)
     elif command == "menu_profile":
+        logger.info("Routing to profile")
         return await profile(update, context)
     elif command == "menu_edit_profile":
+        logger.info("Routing to edit_profile")
         return await edit_profile(update, context)
     elif command == "menu_feedback":
+        logger.info("Routing to feedback_start")
         return await feedback_start(update, context)
+    else:
+        logger.warning(f"Unknown menu command: {command}")
+        await query.message.reply_text("Неизвестная команда.", reply_markup=get_main_menu())
 
 async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start registration process."""
@@ -169,7 +183,7 @@ async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         chat_id = update.message.chat_id
 
-    print(f"Received /register from user: {update.effective_user.id}")
+    logger.info(f"Received /register from user: {update.effective_user.id}")
     db = load_db()
     if any(u['telegram_id'] == update.effective_user.id for u in db['users']):
         await context.bot.send_message(chat_id, "Вы уже зарегистрированы! Используйте 'Мой профиль' или 'Редактировать профиль'.", reply_markup=get_main_menu())
@@ -264,11 +278,14 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.message.chat_id
 
     user_id = update.effective_user.id
+    logger.info(f"Showing profile for user: {user_id}")
     db = load_db()
     user_profile = next((u for u in db['users'] if u['telegram_id'] == user_id), None)
     if not user_profile:
+        logger.info(f"Profile not found for user {user_id}")
         await context.bot.send_message(chat_id, "Ваш профиль не найден. Пожалуйста, зарегистрируйтесь.", reply_markup=get_main_menu())
         return
+    logger.info(f"Found profile for user {user_id}: {user_profile}")
     caption = (
         f"Ваш профиль:\n"
         f"Имя: {user_profile['name']}\n"
@@ -295,7 +312,7 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = update.message
 
-    print(f"Received edit_profile from user: {update.effective_user.id}")
+    logger.info(f"Received edit_profile from user: {update.effective_user.id}")
     keyboard = [
         ["Изменить имя"],
         ["Изменить возраст"],
@@ -465,25 +482,34 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.info(f"Received browse_profiles from user: {user_id}")
     db = load_db()
+    logger.info(f"Total users in database: {len(db['users'])}")
     user_profile = next((u for u in db['users'] if u['telegram_id'] == user_id), None)
     if not user_profile:
+        logger.info(f"User {user_id} not registered")
         await context.bot.send_message(chat_id, "Пожалуйста, зарегистрируйтесь.", reply_markup=get_main_menu())
         return
+    logger.info(f"User profile: {user_profile}")
     blocked_ids = [b['blocked_id'] for b in db['blocked'] if b['blocker_id'] == user_id]
+    logger.info(f"Blocked IDs for user {user_id}: {blocked_ids}")
     profiles = [
         u for u in db['users']
         if u['telegram_id'] != user_id and u['telegram_id'] not in blocked_ids
     ]
-    print(f"Found {len(profiles)} profiles to browse")
+    logger.info(f"Profiles after filtering self and blocked: {len(profiles)}")
     if user_profile['age'] < 18:
         profiles = [u for u in profiles if u['age'] < 18]
+        logger.info(f"Profiles after age filter (<18): {len(profiles)}")
     else:
         profiles = [u for u in profiles if u['age'] >= 18]
+        logger.info(f"Profiles after age filter (>=18): {len(profiles)}")
     if user_profile['city']:
         profiles = [u for u in profiles if u['city'] == user_profile['city'] or u['city'] is None]
+        logger.info(f"Profiles after city filter ({user_profile['city']}): {len(profiles)}")
     if not profiles:
+        logger.info("No profiles available to browse after all filters")
         await context.bot.send_message(chat_id, "Пока нет доступных анкет для просмотра.", reply_markup=get_main_menu())
         return
+    logger.info(f"Available profiles to browse: {profiles}")
     context.user_data['profiles'] = profiles
     context.user_data['current_profile'] = 0
     await show_profile(update, context)
@@ -498,10 +524,11 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     profiles = context.user_data.get('profiles', [])
     index = context.user_data.get('current_profile', 0)
     if not profiles or index >= len(profiles):
+        logger.info("No more profiles to display")
         await context.bot.send_message(chat_id, "Нет больше анкет для просмотра.", reply_markup=get_main_menu())
         return
     profile = profiles[index]
-    print(f"Displaying profile for user: {profile['telegram_id']}")
+    logger.info(f"Displaying profile for user: {profile['telegram_id']}")
     keyboard = [
         [InlineKeyboardButton("👍 Лайк", callback_data=f"like_{profile['telegram_id']}")],
         [InlineKeyboardButton("➡️ Следующая анкета", callback_data="next")],
@@ -517,6 +544,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     except Exception as e:
+        logger.error(f"Error displaying profile: {e}")
         await context.bot.send_message(chat_id, f"Ошибка при отображении анкеты: {e}", reply_markup=get_main_menu())
 
 async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -532,7 +560,7 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle profile like and check for matches."""
     query = update.callback_query
     await query.answer()
-    print(f"Received like from user: {query.from_user.id} for user: {query.data}")
+    logger.info(f"Received like from user: {query.from_user.id} for user: {query.data}")
     liked_user_id = int(query.data.split('_')[1])
     liking_user_id = query.from_user.id
     db = load_db()
@@ -559,7 +587,7 @@ async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show next profile sequentially."""
     query = update.callback_query
     await query.answer()
-    print(f"Received next from user: {query.from_user.id}")
+    logger.info(f"Received next from user: {query.from_user.id}")
     context.user_data['current_profile'] = context.user_data.get('current_profile', 0) + 1
     profiles = context.user_data.get('profiles', [])
     index = context.user_data['current_profile']
@@ -587,7 +615,7 @@ async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start report process."""
     query = update.callback_query
     await query.answer()
-    print(f"Received report from user: {query.from_user.id} for user: {query.data}")
+    logger.info(f"Received report from user: {query.from_user.id} for user: {query.data}")
     reported_user_id = int(query.data.split('_')[1])
     context.user_data['reported_user_id'] = reported_user_id
     await query.message.reply_text("Пожалуйста, укажите причину жалобы.")
@@ -654,7 +682,7 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ban a user based on admin action."""
     query = update.callback_query
     await query.answer()
-    print(f"Received ban request from admin for user: {query.data}")
+    logger.info(f"Received ban request from admin for user: {query.data}")
     user_id = int(query.data.split('_')[1])
     db = load_db()
     if any(u['telegram_id'] == user_id for u in db['users']):
