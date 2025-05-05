@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
@@ -17,8 +18,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Environment variables
-BOT_TOKEN = os.getenv('BOT_TOKEN', 'your-telegram-bot-token-here')
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'your-admin-chat-id-here')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
 # JSON database file
 DB_FILE = 'db.json'
