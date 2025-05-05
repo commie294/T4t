@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -21,8 +21,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Environment variables
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
+BOT_TOKEN = os.getenv('BOT_TOKEN', 'your-telegram-bot-token-here')
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'your-admin-chat-id-here')
 
 # Debug: Print the loaded BOT_TOKEN to verify
 print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
@@ -34,8 +34,9 @@ DB_FILE = 'db.json'
 (
     REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO,
     EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_CITY, EDIT_PHOTO, EDIT_BIO,
-    REPORT, GET_REPORT_REASON
-) = range(17)
+    REPORT, GET_REPORT_REASON, GET_REPORT_SCREENSHOT,
+    FEEDBACK, GET_FEEDBACK_MESSAGE, GET_FEEDBACK_CONTACT
+) = range(21)
 
 def load_db():
     """Load JSON database."""
@@ -45,18 +46,43 @@ def load_db():
             "blocked": [],
             "likes": [],
             "matches": [],
-            "reports": []
+            "reports": [],
+            "feedback": []
         }
-    with open(DB_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"Error loading database: {e}")
+        return {
+            "users": [],
+            "blocked": [],
+            "likes": [],
+            "matches": [],
+            "reports": [],
+            "feedback": []
+        }
 
 def save_db(data):
     """Save JSON database."""
     with open(DB_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+def get_main_menu():
+    """Return the main menu as an InlineKeyboardMarkup."""
+    keyboard = [
+        [InlineKeyboardButton("📝 Регистрация", callback_data="menu_register"),
+         InlineKeyboardButton("🔍 Просмотр анкет", callback_data="menu_browse")],
+        [InlineKeyboardButton("💖 Мэтчи", callback_data="menu_matches"),
+         InlineKeyboardButton("👤 Мой профиль", callback_data="menu_profile")],
+        [InlineKeyboardButton("✏️ Редактировать профиль", callback_data="menu_edit_profile"),
+         InlineKeyboardButton("💬 Обратная связь", callback_data="menu_feedback")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send welcome message with rules and start registration."""
+    """Send welcome message with rules and display the main menu as inline buttons."""
+    logger.info(f"Received /start from user: {update.effective_user.id}")
     rules = (
         "Добро пожаловать в T4t Meet!\n\n"
         "Подпишитесь на наш канал: https://t.me/tperehod\n"
@@ -66,28 +92,47 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "3. Не публикуйте контент 18+ и другой неприемлемый материал.\n"
         "4. Соблюдайте конфиденциальность личной информации других пользователей.\n"
         "5. Администрация оставляет за собой право удалять профили и блокировать пользователей за нарушения.\n\n"
-        "Основные команды:\n"
-        "/register - Зарегистрировать свой профиль.\n"
-        "/browse - Просмотр анкет других пользователей.\n"
-        "/matches - Просмотр ваших мэтчей.\n"
-        "/profile - Просмотр вашего профиля.\n"
-        "/edit_profile - Редактировать свой профиль.\n"
+        "Выберите действие из меню ниже:"
     )
-    keyboard = [
-        [KeyboardButton("/register")],
-        [KeyboardButton("/browse"), KeyboardButton("/matches")],
-        [KeyboardButton("/profile"), KeyboardButton("/edit_profile")]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = get_main_menu()
     await update.message.reply_text(rules, reply_markup=reply_markup)
+
+async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle menu button clicks by triggering corresponding commands."""
+    query = update.callback_query
+    await query.answer()
+    command = query.data
+    print(f"Menu button clicked: {command}")
+
+    if command == "menu_register":
+        return await register_start(update, context)
+    elif command == "menu_browse":
+        return await browse_profiles(update, context)
+    elif command == "menu_matches":
+        return await matches(update, context)
+    elif command == "menu_profile":
+        return await profile(update, context)
+    elif command == "menu_edit_profile":
+        return await edit_profile(update, context)
+    elif command == "menu_feedback":
+        return await feedback_start(update, context)
 
 async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start registration process."""
+    if update.callback_query:
+        query = update.callback_query
+        chat_id = query.message.chat_id
+        message_id = query.message.message_id
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    else:
+        chat_id = update.message.chat_id
+
+    print(f"Received /register from user: {update.effective_user.id}")
     db = load_db()
     if any(u['telegram_id'] == update.effective_user.id for u in db['users']):
-        await update.message.reply_text("Вы уже зарегистрированы! Используйте /profile или /edit_profile.")
+        await context.bot.send_message(chat_id, "Вы уже зарегистрированы! Используйте 'Мой профиль' или 'Редактировать профиль'.", reply_markup=get_main_menu())
         return ConversationHandler.END
-    await update.message.reply_text("Ваше имя: как вас будут видеть другие пользователи?")
+    await context.bot.send_message(chat_id, "Ваше имя: как вас будут видеть другие пользователи?", reply_markup=ReplyKeyboardRemove())
     return GET_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,17 +207,25 @@ async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TY
     }
     db['users'].append(profile)
     save_db(db)
-    await update.message.reply_text("Спасибо за регистрацию! Ваш профиль создан.")
+    await update.message.reply_text("Спасибо за регистрацию! Ваш профиль создан.", reply_markup=get_main_menu())
     context.user_data.clear()
     return ConversationHandler.END
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show user profile with photo."""
+    if update.callback_query:
+        query = update.callback_query
+        chat_id = query.message.chat_id
+        message_id = query.message.message_id
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    else:
+        chat_id = update.message.chat_id
+
     user_id = update.effective_user.id
     db = load_db()
     user_profile = next((u for u in db['users'] if u['telegram_id'] == user_id), None)
     if not user_profile:
-        await update.message.reply_text("Ваш профиль не найден. Пожалуйста, зарегистрируйтесь с /register.")
+        await context.bot.send_message(chat_id, "Ваш профиль не найден. Пожалуйста, зарегистрируйтесь.", reply_markup=get_main_menu())
         return
     caption = (
         f"Ваш профиль:\n"
@@ -183,13 +236,24 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"О себе: {user_profile['bio']}"
     )
     await context.bot.send_photo(
-        chat_id=update.message.chat_id,
+        chat_id=chat_id,
         photo=user_profile['photo_id'],
-        caption=caption
+        caption=caption,
+        reply_markup=get_main_menu()
     )
 
 async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start profile editing."""
+    if update.callback_query:
+        query = update.callback_query
+        chat_id = query.message.chat_id
+        message_id = query.message.message_id
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        message = await context.bot.send_message(chat_id, "Что вы хотите изменить в своем профиле?")
+    else:
+        message = update.message
+
+    print(f"Received edit_profile from user: {update.effective_user.id}")
     keyboard = [
         ["Изменить имя"],
         ["Изменить возраст"],
@@ -200,7 +264,7 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ["Отмена"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text("Что вы хотите изменить в своем профиле?", reply_markup=reply_markup)
+    await message.reply_text("Что вы хотите изменить в своем профиле?", reply_markup=reply_markup)
     return EDIT_PROFILE
 
 async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -218,7 +282,7 @@ async def update_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user['name'] = new_name
             break
     save_db(db)
-    await update.message.reply_text(f"Ваше имя обновлено на '{new_name}'.")
+    await update.message.reply_text(f"Ваше имя обновлено на '{new_name}'.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 async def edit_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -238,7 +302,7 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     user['age'] = new_age
                     break
             save_db(db)
-            await update.message.reply_text(f"Ваш возраст обновлен на '{new_age}'.")
+            await update.message.reply_text(f"Ваш возраст обновлен на '{new_age}'.", reply_markup=get_main_menu())
             return ConversationHandler.END
         else:
             await update.message.reply_text("Пожалуйста, введите корректный возраст (от 16 до 100 лет).")
@@ -267,7 +331,7 @@ async def update_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user['gender'] = new_gender
             break
     save_db(db)
-    await update.message.reply_text(f"Ваш пол обновлен на '{new_gender}'.")
+    await update.message.reply_text(f"Ваш пол обновлен на '{new_gender}'.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 async def edit_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -280,7 +344,7 @@ async def edit_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user['gender'] = new_gender
             break
     save_db(db)
-    await update.message.reply_text(f"Ваш пол обновлен на '{new_gender}'.")
+    await update.message.reply_text(f"Ваш пол обновлен на '{new_gender}'.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 async def edit_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -298,7 +362,7 @@ async def update_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user['city'] = new_city if new_city.lower() != 'any' else None
             break
     save_db(db)
-    await update.message.reply_text(f"Ваш город обновлен на '{new_city or 'Не указан'}'.")
+    await update.message.reply_text(f"Ваш город обновлен на '{new_city or 'Не указан'}'.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -317,7 +381,7 @@ async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user['photo_id'] = new_photo_id
                 break
         save_db(db)
-        await update.message.reply_text("Ваша фотография профиля обновлена.")
+        await update.message.reply_text("Ваша фотография профиля обновлена.", reply_markup=get_main_menu())
         return ConversationHandler.END
     else:
         await update.message.reply_text("Пожалуйста, отправьте фотографию.")
@@ -338,66 +402,95 @@ async def update_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user['bio'] = new_bio
             break
     save_db(db)
-    await update.message.reply_text("Ваше описание профиля обновлено.")
+    await update.message.reply_text("Ваше описание профиля обновлено.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancel profile editing."""
-    await update.message.reply_text("Редактирование профиля отменено.")
+    await update.message.reply_text("Редактирование профиля отменено.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Browse profiles sequentially with filters."""
+    if update.callback_query:
+        query = update.callback_query
+        chat_id = query.message.chat_id
+        message_id = query.message.message_id
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    else:
+        chat_id = update.message.chat_id
+
     user_id = update.effective_user.id
+    logger.info(f"Received browse_profiles from user: {user_id}")
     db = load_db()
     user_profile = next((u for u in db['users'] if u['telegram_id'] == user_id), None)
     if not user_profile:
-        await update.message.reply_text("Пожалуйста, зарегистрируйтесь с /register.")
+        await context.bot.send_message(chat_id, "Пожалуйста, зарегистрируйтесь.", reply_markup=get_main_menu())
         return
-    blocked_ids = [ Inuit
-['blocked_id'] for b in db['blocked'] if b['blocker_id'] == user_id]
+    blocked_ids = [b['blocked_id'] for b in db['blocked'] if b['blocker_id'] == user_id]
     profiles = [
         u for u in db['users']
         if u['telegram_id'] != user_id and u['telegram_id'] not in blocked_ids
     ]
+    print(f"Found {len(profiles)} profiles to browse")
     if user_profile['age'] < 18:
         profiles = [u for u in profiles if u['age'] < 18]
     else:
         profiles = [u for u in profiles if u['age'] >= 18]
     if user_profile['city']:
         profiles = [u for u in profiles if u['city'] == user_profile['city'] or u['city'] is None]
+    if not profiles:
+        await context.bot.send_message(chat_id, "Пока нет доступных анкет для просмотра.", reply_markup=get_main_menu())
+        return
     context.user_data['profiles'] = profiles
     context.user_data['current_profile'] = 0
-    if not profiles:
-        await update.message.reply_text("Пока нет доступных анкет для просмотра.")
-        return
     await show_profile(update, context)
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display a profile with options."""
-    profiles = context.user_data['profiles']
-    index = context.user_data['current_profile']
-    if index >= len(profiles):
-        await update.message.reply_text("Нет больше анкет для просмотра.")
+    if update.message:
+        chat_id = update.message.chat_id
+    else:
+        chat_id = update.callback_query.message.chat_id
+
+    profiles = context.user_data.get('profiles', [])
+    index = context.user_data.get('current_profile', 0)
+    if not profiles or index >= len(profiles):
+        await context.bot.send_message(chat_id, "Нет больше анкет для просмотра.", reply_markup=get_main_menu())
         return
     profile = profiles[index]
+    print(f"Displaying profile for user: {profile['telegram_id']}")
     keyboard = [
         [InlineKeyboardButton("👍 Лайк", callback_data=f"like_{profile['telegram_id']}")],
         [InlineKeyboardButton("➡️ Следующая анкета", callback_data="next")],
-        [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f"report_{profile['telegram_id']}")]
+        [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f"report_{profile['telegram_id']}")],
+        [InlineKeyboardButton("⬅️ Главное меню", callback_data="back_to_menu")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_photo(
-        chat_id=update.message.chat_id,
-        photo=profile['photo_id'],
-        caption=f"Имя: {profile['name']}\nВозраст: {profile['age']}\nПол: {profile['gender']}\nГород: {profile['city'] or 'Не указан'}\nО себе: {profile['bio']}",
-        reply_markup=reply_markup
-    )
+    try:
+        await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=profile['photo_id'],
+            caption=f"Имя: {profile['name']}\nВозраст: {profile['age']}\nПол: {profile['gender']}\nГород: {profile['city'] or 'Не указан'}\nО себе: {profile['bio']}",
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        await context.bot.send_message(chat_id, f"Ошибка при отображении анкеты: {e}", reply_markup=get_main_menu())
+
+async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Return to the main menu."""
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat_id
+    message_id = query.message.message_id
+    await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    await context.bot.send_message(chat_id, "Выберите действие:", reply_markup=get_main_menu())
 
 async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle profile like and check for matches."""
     query = update.callback_query
     await query.answer()
+    print(f"Received like from user: {query.from_user.id} for user: {query.data}")
     liked_user_id = int(query.data.split('_')[1])
     liking_user_id = query.from_user.id
     db = load_db()
@@ -411,7 +504,8 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_db(db)
     keyboard = [
         [InlineKeyboardButton("➡️ Следующая анкета", callback_data="next")],
-        [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f"report_{liked_user_id}")]
+        [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f"report_{liked_user_id}")],
+        [InlineKeyboardButton("⬅️ Главное меню", callback_data="back_to_menu")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_caption(
@@ -423,17 +517,20 @@ async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show next profile sequentially."""
     query = update.callback_query
     await query.answer()
-    context.user_data['current_profile'] += 1
-    profiles = context.user_data['profiles']
+    print(f"Received next from user: {query.from_user.id}")
+    context.user_data['current_profile'] = context.user_data.get('current_profile', 0) + 1
+    profiles = context.user_data.get('profiles', [])
     index = context.user_data['current_profile']
     if index >= len(profiles):
-        await query.edit_message_text("Нет больше анкет для просмотра.")
+        await query.message.delete()
+        await query.message.reply_text("Нет больше анкет для просмотра.", reply_markup=get_main_menu())
         return
     profile = profiles[index]
     keyboard = [
         [InlineKeyboardButton("👍 Лайк", callback_data=f"like_{profile['telegram_id']}")],
         [InlineKeyboardButton("➡️ Следующая анкета", callback_data="next")],
-        [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f"report_{profile['telegram_id']}")]
+        [InlineKeyboardButton("⚠️ Пожаловаться", callback_data=f"report_{profile['telegram_id']}")],
+        [InlineKeyboardButton("⬅️ Главное меню", callback_data="back_to_menu")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_media(
@@ -448,42 +545,143 @@ async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start report process."""
     query = update.callback_query
     await query.answer()
+    print(f"Received report from user: {query.from_user.id} for user: {query.data}")
     reported_user_id = int(query.data.split('_')[1])
     context.user_data['reported_user_id'] = reported_user_id
-    await context.bot.send_message(query.message.chat_id, "Пожалуйста, укажите причину жалобы.")
+    await query.message.reply_text("Пожалуйста, укажите причину жалобы.")
     return GET_REPORT_REASON
 
 async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle report reason and notify admin."""
-    reason = update.message.text
+    """Handle report reason and request a screenshot."""
+    context.user_data['report_reason'] = update.message.text
+    await update.message.reply_text("Пожалуйста, прикрепите скриншот, подтверждающий нарушение (например, переписка или анкета).")
+    return GET_REPORT_SCREENSHOT
+
+async def get_report_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle screenshot for report and notify admin."""
+    if not update.message.photo:
+        await update.message.reply_text("Пожалуйста, отправьте скриншот в виде фотографии.")
+        return GET_REPORT_SCREENSHOT
+
+    screenshot_id = update.message.photo[-1].file_id
+    reason = context.user_data.get('report_reason')
     reporter_user_id = update.message.from_user.id
     reported_user_id = context.user_data.get('reported_user_id')
+    
     if reported_user_id:
         db = load_db()
         db['reports'].append({
             'reporter_id': reporter_user_id,
             'reported_id': reported_user_id,
-            'reason': reason
+            'reason': reason,
+            'screenshot_id': screenshot_id
         })
         db['blocked'].append({'blocker_id': reporter_user_id, 'blocked_id': reported_user_id})
         save_db(db)
-        await update.message.reply_text("Ваша жалоба принята и будет рассмотрена.")
+        await update.message.reply_text("Ваша жалоба принята и будет рассмотрена.", reply_markup=get_main_menu())
         if ADMIN_CHAT_ID:
             reporter_user = next((u for u in db['users'] if u['telegram_id'] == reporter_user_id), None)
             reported_user = next((u for u in db['users'] if u['telegram_id'] == reported_user_id), None)
             if reporter_user and reported_user:
-                await context.bot.send_message(
-                    ADMIN_CHAT_ID,
-                    f"Новая жалоба:\nОт пользователя ID {reporter_user_id} ({reporter_user['name']})\nНа пользователя ID {reported_user_id} ({reported_user['name']})\nПричина: {reason}"
+                keyboard = [
+                    [InlineKeyboardButton("Забанить", callback_data=f"ban_{reported_user_id}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                reporter_link = f"tg://user?id={reporter_user_id}"
+                reported_link = f"tg://user?id={reported_user_id}"
+                message = (
+                    f"Новая жалоба:\n"
+                    f"От пользователя: {reporter_user['name']} (ID: {reporter_user_id}, [Профиль]({reporter_link}))\n"
+                    f"На пользователя: {reported_user['name']} (ID: {reported_user_id}, [Профиль]({reported_link}))\n"
+                    f"Причина: {reason}"
+                )
+                await context.bot.send_photo(
+                    chat_id=ADMIN_CHAT_ID,
+                    photo=screenshot_id,
+                    caption=message,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
                 )
         context.user_data.clear()
         return ConversationHandler.END
     else:
-        await update.message.reply_text("Произошла ошибка при обработке жалобы.")
+        await update.message.reply_text("Произошла ошибка при обработке жалобы.", reply_markup=get_main_menu())
         return ConversationHandler.END
+
+async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ban a user based on admin action."""
+    query = update.callback_query
+    await query.answer()
+    print(f"Received ban request from admin for user: {query.data}")
+    user_id = int(query.data.split('_')[1])
+    db = load_db()
+    if any(u['telegram_id'] == user_id for u in db['users']):
+        db['users'] = [u for u in db['users'] if u['telegram_id'] != user_id]
+        db['blocked'].append({'blocker_id': int(ADMIN_CHAT_ID), 'blocked_id': user_id})
+        save_db(db)
+        await query.message.reply_text(f"Пользователь ID {user_id} забанен.")
+    else:
+        await query.message.reply_text(f"Пользователь ID {user_id} не найден.")
+    await query.message.delete()
+
+async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start feedback process."""
+    if update.callback_query:
+        query = update.callback_query
+        chat_id = query.message.chat_id
+        message_id = query.message.message_id
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        message = await context.bot.send_message(chat_id, "Пожалуйста, опишите ваш отзыв, предложение или проблему.")
+    else:
+        message = update.message
+
+    await message.reply_text("Пожалуйста, опишите ваш отзыв, предложение или проблему.", reply_markup=ReplyKeyboardRemove())
+    return GET_FEEDBACK_MESSAGE
+
+async def get_feedback_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle feedback message and ask for contact info."""
+    context.user_data['feedback_message'] = update.message.text
+    await update.message.reply_text("Если вы хотите, чтобы мы связались с вами, укажите ваш контакт (например, Telegram @username). Если нет, просто напишите 'Нет'.")
+    return GET_FEEDBACK_CONTACT
+
+async def get_feedback_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle feedback contact info and send to admin."""
+    contact = update.message.text
+    feedback_message = context.user_data.get('feedback_message')
+    user_id = update.message.from_user.id
+    db = load_db()
+    feedback_entry = {
+        'user_id': user_id,
+        'message': feedback_message,
+        'contact': contact if contact.lower() != 'нет' else None
+    }
+    db['feedback'].append(feedback_entry)
+    save_db(db)
+    await update.message.reply_text("Спасибо за ваш отзыв! Мы рассмотрим его в ближайшее время.", reply_markup=get_main_menu())
+    if ADMIN_CHAT_ID:
+        user = next((u for u in db['users'] if u['telegram_id'] == user_id), None)
+        user_name = user['name'] if user else f"ID {user_id}"
+        user_link = f"tg://user?id={user_id}"
+        message = (
+            f"Новый отзыв:\n"
+            f"От пользователя: {user_name} ([Профиль]({user_link}))\n"
+            f"Сообщение: {feedback_message}\n"
+            f"Контакт: {contact if contact.lower() != 'нет' else 'Не указан'}"
+        )
+        await context.bot.send_message(ADMIN_CHAT_ID, message, parse_mode="Markdown")
+    context.user_data.clear()
+    return ConversationHandler.END
 
 async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show mutual matches with chat buttons."""
+    if update.callback_query:
+        query = update.callback_query
+        chat_id = query.message.chat_id
+        message_id = query.message.message_id
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    else:
+        chat_id = update.message.chat_id
+
     user_id = update.effective_user.id
     db = load_db()
     user_matches = [
@@ -491,7 +689,7 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if m['user1_id'] == user_id or m['user2_id'] == user_id
     ]
     if not user_matches:
-        await update.message.reply_text("У вас пока нет мэтчей.")
+        await context.bot.send_message(chat_id, "У вас пока нет мэтчей.", reply_markup=get_main_menu())
         return
     message = "Ваши мэтчи:\n"
     keyboard = []
@@ -500,8 +698,9 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
         other_user = next(u for u in db['users'] if u['telegram_id'] == other_id)
         message += f"- {other_user['name']} (Возраст: {other_user['age']}, Пол: {other_user['gender']})\n"
         keyboard.append([InlineKeyboardButton(f"Начать чат с {other_user['name']}", callback_data=f"chat_{other_id}")])
+    keyboard.append([InlineKeyboardButton("⬅️ Главное меню", callback_data="back_to_menu")])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(message, reply_markup=reply_markup)
+    await context.bot.send_message(chat_id, message, reply_markup=reply_markup)
 
 async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle chat initiation."""
@@ -511,18 +710,19 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = load_db()
     matched_user = next((u for u in db['users'] if u['telegram_id'] == matched_user_id), None)
     if matched_user:
-        await query.message.reply_text(f"Вы выбрали пользователя @{matched_user['username']}. Найдите его в Telegram и начните чат!")
+        await query.message.reply_text(f"Вы выбрали пользователя @{matched_user['username']}. Найдите его в Telegram и начните чат!", reply_markup=get_main_menu())
     else:
-        await query.message.reply_text("Пользователь не найден.")
+        await query.message.reply_text("Пользователь не найден.", reply_markup=get_main_menu())
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancel any conversation."""
-    await update.message.reply_text("Операция отменена.")
+    await update.message.reply_text("Операция отменена.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 def main():
     """Run the bot."""
     application = Application.builder().token(BOT_TOKEN).build()
+    logger.info("Bot started")
 
     register_handler = ConversationHandler(
         entry_points=[CommandHandler("register", register_start)],
@@ -542,13 +742,13 @@ def main():
         entry_points=[CommandHandler("edit_profile", edit_profile)],
         states={
             EDIT_PROFILE: [
-                MessageHandler(filters.Regex("^Изменить имя$"), edit_name),
-                MessageHandler(filters.Regex("^Изменить возраст$"), edit_age),
-                MessageHandler(filters.Regex("^Изменить пол$"), edit_gender),
-                MessageHandler(filters.Regex("^Изменить город$"), edit_city),
-                MessageHandler(filters.Regex("^Изменить фото$"), edit_photo),
-                MessageHandler(filters.Regex("^Изменить био$"), edit_bio),
-                MessageHandler(filters.Regex("^Отмена$"), cancel_edit),
+                MessageHandler(filters.Regex(".*Изменить имя.*"), edit_name),
+                MessageHandler(filters.Regex(".*Изменить возраст.*"), edit_age),
+                MessageHandler(filters.Regex(".*Изменить пол.*"), edit_gender),
+                MessageHandler(filters.Regex(".*Изменить город.*"), edit_city),
+                MessageHandler(filters.Regex(".*Изменить фото.*"), edit_photo),
+                MessageHandler(filters.Regex(".*Изменить био.*"), edit_bio),
+                MessageHandler(filters.Regex(".*Отмена.*"), cancel_edit),
             ],
             EDIT_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_name)],
             EDIT_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_age)],
@@ -565,20 +765,35 @@ def main():
         entry_points=[CallbackQueryHandler(report_profile, pattern='^report_')],
         states={
             GET_REPORT_REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_report_reason)],
+            GET_REPORT_SCREENSHOT: [MessageHandler(filters.ALL, get_report_screenshot)],
         },
         fallbacks=[CommandHandler("cancel", cancel)]
     )
 
+    feedback_handler = ConversationHandler(
+        entry_points=[CommandHandler("feedback", feedback_start)],
+        states={
+            GET_FEEDBACK_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_feedback_message)],
+            GET_FEEDBACK_CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_feedback_contact)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
+    )
+
+    # Prioritize handlers
+    application.add_handler(register_handler)
+    application.add_handler(edit_profile_handler)
+    application.add_handler(report_handler)
+    application.add_handler(feedback_handler)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("profile", profile))
     application.add_handler(CommandHandler("browse", browse_profiles))
     application.add_handler(CommandHandler("matches", matches))
-    application.add_handler(register_handler)
-    application.add_handler(edit_profile_handler)
-    application.add_handler(report_handler)
+    application.add_handler(CallbackQueryHandler(menu_handler, pattern='^menu_'))
+    application.add_handler(CallbackQueryHandler(back_to_menu, pattern='^back_to_menu$'))
     application.add_handler(CallbackQueryHandler(like_profile, pattern='^like_'))
     application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
     application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
+    application.add_handler(CallbackQueryHandler(ban_user, pattern='^ban_'))
 
     application.run_polling()
 
