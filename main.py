@@ -114,9 +114,7 @@ async def get_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if gender == "Другое":
         await update.message.reply_text("Пожалуйста, уточните вашу гендерную идентичность.")
         return GET_GENDER_OTHER
-    await update.message.reply_text("Введите ваш город (или 'Any' для /
-
-System: всех городов):")
+    await update.message.reply_text("Введите ваш город (или 'Any' для всех городов):")
     return GET_PHOTO
 
 async def get_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
