@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import shutil
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
@@ -27,8 +28,9 @@ ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 # Debug: Print the loaded BOT_TOKEN to verify
 print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
 
-# JSON database file
-DB_FILE = 'db.json'
+# JSON database file with absolute path
+DB_FILE = '/home/venikpes/T4t/db.json'
+DB_BACKUP_FILE = '/home/venikpes/T4t/db_backup.json'
 
 # Conversation states
 (
@@ -39,9 +41,10 @@ DB_FILE = 'db.json'
 ) = range(21)
 
 def load_db():
-    """Load JSON database."""
+    """Load JSON database with improved error handling."""
     if not os.path.exists(DB_FILE):
-        return {
+        logger.warning(f"Database file {DB_FILE} not found. Initializing new database.")
+        default_db = {
             "users": [],
             "blocked": [],
             "likes": [],
@@ -49,24 +52,51 @@ def load_db():
             "reports": [],
             "feedback": []
         }
+        # Create the file to ensure it exists for future operations
+        with open(DB_FILE, 'w', encoding='utf-8') as f:
+            json.dump(default_db, f, ensure_ascii=False, indent=2)
+        return default_db
+
     try:
         with open(DB_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+        logger.info(f"Successfully loaded database from {DB_FILE}")
+        return data
     except (json.JSONDecodeError, IOError) as e:
-        print(f"Error loading database: {e}")
-        return {
-            "users": [],
-            "blocked": [],
-            "likes": [],
-            "matches": [],
-            "reports": [],
-            "feedback": []
-        }
+        logger.error(f"Failed to load database from {DB_FILE}: {e}")
+        # Check if a backup exists
+        if os.path.exists(DB_BACKUP_FILE):
+            logger.info(f"Attempting to load backup database from {DB_BACKUP_FILE}")
+            try:
+                with open(DB_BACKUP_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                logger.info(f"Successfully loaded backup database")
+                # Restore the main database from backup
+                with open(DB_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                return data
+            except (json.JSONDecodeError, IOError) as backup_e:
+                logger.error(f"Failed to load backup database: {backup_e}")
+        raise Exception(f"Database load failed: {e}. Backup also unavailable or corrupted.")
 
 def save_db(data):
-    """Save JSON database."""
-    with open(DB_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    """Save JSON database with backup."""
+    # Create a backup of the current database
+    if os.path.exists(DB_FILE):
+        try:
+            shutil.copyfile(DB_FILE, DB_BACKUP_FILE)
+            logger.info(f"Created backup of database at {DB_BACKUP_FILE}")
+        except Exception as e:
+            logger.error(f"Failed to create backup of database: {e}")
+
+    # Save the new database
+    try:
+        with open(DB_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Successfully saved database to {DB_FILE}")
+    except Exception as e:
+        logger.error(f"Failed to save database to {DB_FILE}: {e}")
+        raise Exception(f"Database save failed: {e}")
 
 def get_main_menu():
     """Return the main menu as an InlineKeyboardMarkup."""
