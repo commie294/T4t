@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
@@ -27,9 +26,9 @@ DB_FILE = 'db.json'
 # Conversation states
 (
     REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO,
-    EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_PHOTO, EDIT_BIO,
+    EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_CITY, EDIT_PHOTO, EDIT_BIO,
     REPORT, GET_REPORT_REASON
-) = range(16)
+) = range(17)
 
 def load_db():
     """Load JSON database."""
@@ -277,6 +276,24 @@ async def edit_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Ваш пол обновлен на '{new_gender}'.")
     return ConversationHandler.END
 
+async def edit_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle city edit."""
+    await update.message.reply_text("Пожалуйста, введите новый город (или 'Any' для всех городов).")
+    return EDIT_CITY
+
+async def update_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Update city in profile."""
+    new_city = update.message.text.strip()
+    user_id = update.effective_user.id
+    db = load_db()
+    for user in db['users']:
+        if user['telegram_id'] == user_id:
+            user['city'] = new_city if new_city.lower() != 'any' else None
+            break
+    save_db(db)
+    await update.message.reply_text(f"Ваш город обновлен на '{new_city or 'Не указан'}'.")
+    return ConversationHandler.END
+
 async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle photo edit."""
     await update.message.reply_text("Пожалуйста, отправьте новую фотографию профиля.")
@@ -520,8 +537,8 @@ def main():
                 MessageHandler(filters.Regex("^Изменить имя$"), edit_name),
                 MessageHandler(filters.Regex("^Изменить возраст$"), edit_age),
                 MessageHandler(filters.Regex("^Изменить пол$"), edit_gender),
-                MessageHandler(filters.Regex("^Изменить город$"), edit_photo),
-                MessageHandler(filters.Regex("^Изменить фото$"), edit_bio),
+                MessageHandler(filters.Regex("^Изменить город$"), edit_city),
+                MessageHandler(filters.Regex("^Изменить фото$"), edit_photo),
                 MessageHandler(filters.Regex("^Изменить био$"), edit_bio),
                 MessageHandler(filters.Regex("^Отмена$"), cancel_edit),
             ],
@@ -529,6 +546,7 @@ def main():
             EDIT_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_age)],
             EDIT_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_gender)],
             EDIT_GENDER_OTHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_gender_other)],
+            EDIT_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_city)],
             EDIT_PHOTO: [MessageHandler(filters.PHOTO, update_photo)],
             EDIT_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_bio)],
         },
