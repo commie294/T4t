@@ -31,6 +31,7 @@ print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
 # JSON database file with absolute path
 DB_FILE = '/home/venikpes/T4t/db.json'
 DB_BACKUP_FILE = '/home/venikpes/T4t/db_backup.json'
+DB_RESTORE_FILE = '/home/venikpes/T4t/db_restore.json'
 
 # Conversation states
 (
@@ -41,7 +42,18 @@ DB_BACKUP_FILE = '/home/venikpes/T4t/db_backup.json'
 ) = range(21)
 
 def load_db():
-    """Load JSON database with improved error handling."""
+    """Load JSON database with improved error handling and restoration check."""
+    # Check for restoration file and apply it
+    if os.path.exists(DB_RESTORE_FILE):
+        logger.info(f"Restoration file {DB_RESTORE_FILE} found. Applying to {DB_FILE}")
+        try:
+            shutil.copyfile(DB_RESTORE_FILE, DB_FILE)
+            os.remove(DB_RESTORE_FILE)
+            logger.info(f"Restored {DB_FILE} from {DB_RESTORE_FILE}")
+        except Exception as e:
+            logger.error(f"Failed to restore database: {e}")
+            raise Exception(f"Database restoration failed: {e}")
+
     if not os.path.exists(DB_FILE):
         logger.warning(f"Database file {DB_FILE} not found. Initializing new database.")
         default_db = {
