@@ -21,8 +21,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Environment variables
-BOT_TOKEN = os.getenv('BOT_TOKEN', 'your-telegram-bot-token-here')
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'your-admin-chat-id-here')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
 # Debug: Print the loaded BOT_TOKEN to verify
 print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
