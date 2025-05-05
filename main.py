@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_CHAT_ID = ('ADMIN_CHAT_ID')
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
 # Debug: Print the loaded BOT_TOKEN to verify
 print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
@@ -193,16 +193,26 @@ async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle name input."""
+    user_id = update.effective_user.id
+    logger.info(f"Received text message for name input from user {user_id}: {update.message.text}")
+    if not update.message.text:
+        logger.warning(f"No text received from user {user_id} for name input")
+        await update.message.reply_text("Пожалуйста, введите ваше имя текстом.")
+        return GET_NAME
     context.user_data['name'] = update.message.text
+    logger.info(f"Stored name for user {user_id}: {context.user_data['name']}")
     await update.message.reply_text(f"Отлично, ваше имя будет '{context.user_data['name']}'. Теперь скажите, сколько вам лет?")
     return GET_AGE
 
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle age input with validation."""
+    user_id = update.effective_user.id
+    logger.info(f"Received text message for age input from user {user_id}: {update.message.text}")
     try:
         age = int(update.message.text)
         if 16 <= age <= 100:
             context.user_data['age'] = age
+            logger.info(f"Stored age for user {user_id}: {age}")
             keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
             reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text("Кем вы себя идентифицируете?", reply_markup=reply_markup)
@@ -216,7 +226,9 @@ async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle gender selection."""
+    user_id = update.effective_user.id
     gender = update.message.text
+    logger.info(f"Received gender selection from user {user_id}: {gender}")
     context.user_data['gender'] = gender
     if gender == "Другое":
         await update.message.reply_text("Пожалуйста, уточните вашу гендерную идентичность.")
@@ -226,30 +238,39 @@ async def get_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle custom gender input."""
-    context.user_data['gender'] = update.message.text
+    user_id = update.effective_user.id
+    gender = update.message.text
+    logger.info(f"Received custom gender from user {user_id}: {gender}")
+    context.user_data['gender'] = gender
     await update.message.reply_text("Введите ваш город (или 'Any' для всех городов):")
     return GET_PHOTO
 
 async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle city input."""
+    user_id = update.effective_user.id
     city = update.message.text.strip()
+    logger.info(f"Received city from user {user_id}: {city}")
     context.user_data['city'] = city if city.lower() != 'any' else None
     await update.message.reply_text("Пожалуйста, загрузите вашу фотографию профиля.")
     return GET_BIO
 
 async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle photo and bio input."""
+    user_id = update.effective_user.id
     if update.message.photo:
+        logger.info(f"Received photo from user {user_id}")
         context.user_data['photo_id'] = update.message.photo[-1].file_id
         await update.message.reply_text("Отлично, фото получено. Теперь расскажите немного о себе (ваши интересы, что вы ищете и т.д.).")
         return REGISTER
     else:
+        logger.warning(f"No photo received from user {user_id}")
         await update.message.reply_text("Пожалуйста, отправьте фотографию.")
         return GET_BIO
 
 async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Save profile and complete registration."""
     user = update.effective_user
+    logger.info(f"Completing registration for user {user.id}")
     db = load_db()
     profile = {
         'telegram_id': user.id,
@@ -789,13 +810,21 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Операция отменена.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
+async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle unknown messages."""
+    logger.info(f"Received unknown message from user {update.effective_user.id}: {update.message.text}")
+    await update.message.reply_text("Извините, я не понимаю это сообщение. Пожалуйста, используйте команды из меню.", reply_markup=get_main_menu())
+
 def main():
     """Run the bot."""
     application = Application.builder().token(BOT_TOKEN).build()
     logger.info("Bot started")
 
     register_handler = ConversationHandler(
-        entry_points=[CommandHandler("register", register_start)],
+        entry_points=[
+            CommandHandler("register", register_start),
+            CallbackQueryHandler(register_start, pattern='^menu_register$')
+        ],
         states={
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             GET_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_age)],
@@ -864,6 +893,7 @@ def main():
     application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
     application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
     application.add_handler(CallbackQueryHandler(ban_user, pattern='^ban_'))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
 
     application.run_polling()
 
