@@ -14,36 +14,23 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# Load environment variables from .env file with explicit path
-load_dotenv('/home/venikpes/T4t/.env')
+load_dotenv()
 
-# Logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
-# Debug: Print the loaded BOT_TOKEN to verify
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
 
-# JSON database file with absolute path
 DB_FILE = '/home/venikpes/T4t/db.json'
 DB_BACKUP_FILE = '/home/venikpes/T4t/db_backup.json'
 DB_RESTORE_FILE = '/home/venikpes/T4t/db_restore.json'
 
-# Conversation states
-(
-    REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO,
-    EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_CITY, EDIT_PHOTO, EDIT_BIO,
-    REPORT, GET_REPORT_REASON, GET_REPORT_SCREENSHOT,
-    FEEDBACK, GET_FEEDBACK_MESSAGE, GET_FEEDBACK_CONTACT
-) = range(21)
+REGISTER, GET_NAME, GET_AGE, GET_GENDER, GET_GENDER_OTHER, GET_PHOTO, GET_BIO, EDIT_PROFILE, EDIT_NAME, EDIT_AGE, EDIT_GENDER, EDIT_GENDER_OTHER, EDIT_CITY, EDIT_PHOTO, EDIT_BIO, REPORT, GET_REPORT_REASON, GET_REPORT_SCREENSHOT, FEEDBACK, GET_FEEDBACK_MESSAGE, GET_FEEDBACK_CONTACT = range(21)
 
 def load_db():
-    """Load JSON database with improved error handling and restoration check."""
-    # Check for restoration file and apply it
     if os.path.exists(DB_RESTORE_FILE):
         logger.info(f"Restoration file {DB_RESTORE_FILE} found. Applying to {DB_FILE}")
         try:
@@ -64,10 +51,8 @@ def load_db():
             "reports": [],
             "feedback": []
         }
-        # Create the file to ensure it exists for future operations
         with open(DB_FILE, 'w', encoding='utf-8') as f:
             json.dump(default_db, f, ensure_ascii=False, indent=2)
-        logger.info("Initialized new database with empty users array")
         return default_db
 
     try:
@@ -80,7 +65,6 @@ def load_db():
         return data
     except (json.JSONDecodeError, IOError) as e:
         logger.error(f"Failed to load database from {DB_FILE}: {e}")
-        # Check if a backup exists
         if os.path.exists(DB_BACKUP_FILE):
             logger.info(f"Attempting to load backup database from {DB_BACKUP_FILE}")
             try:
@@ -88,7 +72,6 @@ def load_db():
                     data = json.load(f)
                 logger.info(f"Successfully loaded backup database")
                 logger.info(f"Number of users in backup database: {len(data['users'])}")
-                # Restore the main database from backup
                 with open(DB_FILE, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
                 return data
@@ -97,8 +80,6 @@ def load_db():
         raise Exception(f"Database load failed: {e}. Backup also unavailable or corrupted.")
 
 def save_db(data):
-    """Save JSON database with backup."""
-    # Create a backup of the current database
     if os.path.exists(DB_FILE):
         try:
             shutil.copyfile(DB_FILE, DB_BACKUP_FILE)
@@ -106,7 +87,6 @@ def save_db(data):
         except Exception as e:
             logger.error(f"Failed to create backup of database: {e}")
 
-    # Save the new database
     try:
         with open(DB_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -116,7 +96,6 @@ def save_db(data):
         raise Exception(f"Database save failed: {e}")
 
 def get_main_menu():
-    """Return the main menu as an InlineKeyboardMarkup."""
     keyboard = [
         [InlineKeyboardButton("📝 Регистрация", callback_data="menu_register"),
          InlineKeyboardButton("🔍 Просмотр анкет", callback_data="menu_browse")],
@@ -128,7 +107,6 @@ def get_main_menu():
     return InlineKeyboardMarkup(keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send welcome message with rules and display the main menu as inline buttons."""
     logger.info(f"Received /start from user: {update.effective_user.id}")
     rules = (
         "Добро пожаловать в T4t Meet!\n\n"
@@ -141,11 +119,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "5. Администрация оставляет за собой право удалять профили и блокировать пользователей за нарушения.\n\n"
         "Выберите действие из меню ниже:"
     )
-    reply_markup = get_main_menu()
-    await update.message.reply_text(rules, reply_markup=reply_markup)
+    await update.message.reply_text(rules, reply_markup=get_main_menu())
 
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle menu button clicks by triggering corresponding commands."""
     query = update.callback_query
     await query.answer()
     command = query.data
@@ -174,7 +150,6 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Неизвестная команда.", reply_markup=get_main_menu())
 
 async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start registration process."""
     if update.callback_query:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -192,7 +167,6 @@ async def register_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GET_NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle name input."""
     user_id = update.effective_user.id
     logger.info(f"Received text message for name input from user {user_id}: {update.message.text}")
     if not update.message.text:
@@ -205,7 +179,6 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GET_AGE
 
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle age input with validation."""
     user_id = update.effective_user.id
     logger.info(f"Received text message for age input from user {user_id}: {update.message.text}")
     try:
@@ -225,7 +198,6 @@ async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return GET_AGE
 
 async def get_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle gender selection."""
     user_id = update.effective_user.id
     gender = update.message.text
     logger.info(f"Received gender selection from user {user_id}: {gender}")
@@ -237,7 +209,6 @@ async def get_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GET_PHOTO
 
 async def get_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle custom gender input."""
     user_id = update.effective_user.id
     gender = update.message.text
     logger.info(f"Received custom gender from user {user_id}: {gender}")
@@ -246,7 +217,6 @@ async def get_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GET_PHOTO
 
 async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle city input."""
     user_id = update.effective_user.id
     city = update.message.text.strip()
     logger.info(f"Received city from user {user_id}: {city}")
@@ -255,7 +225,6 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GET_BIO
 
 async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle photo and bio input."""
     user_id = update.effective_user.id
     if update.message.photo:
         logger.info(f"Received photo from user {user_id}")
@@ -268,7 +237,6 @@ async def get_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return GET_BIO
 
 async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Save profile and complete registration."""
     user = update.effective_user
     logger.info(f"Completing registration for user {user.id}")
     db = load_db()
@@ -289,7 +257,6 @@ async def complete_registration(update: Update, context: ContextTypes.DEFAULT_TY
     return ConversationHandler.END
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show user profile with photo."""
     if update.callback_query:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -323,7 +290,6 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start profile editing."""
     if update.callback_query:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -348,12 +314,10 @@ async def edit_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return EDIT_PROFILE
 
 async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle name edit."""
     await update.message.reply_text("Пожалуйста, введите новое имя.")
     return EDIT_NAME
 
 async def update_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Update name in profile."""
     new_name = update.message.text
     user_id = update.effective_user.id
     db = load_db()
@@ -366,12 +330,10 @@ async def update_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def edit_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle age edit."""
     await update.message.reply_text("Пожалуйста, введите новый возраст.")
     return EDIT_AGE
 
 async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Update age in profile."""
     try:
         new_age = int(update.message.text)
         if 16 <= new_age <= 100:
@@ -392,14 +354,12 @@ async def update_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return EDIT_AGE
 
 async def edit_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle gender edit."""
     keyboard = [["Транс-женщина"], ["Транс-мужчина"], ["Небинарная персона"], ["Другое"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Пожалуйста, выберите новый пол.", reply_markup=reply_markup)
     return EDIT_GENDER
 
 async def update_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Update gender in profile."""
     new_gender = update.message.text
     if new_gender == "Другое":
         await update.message.reply_text("Пожалуйста, уточните вашу гендерную идентичность.")
@@ -415,7 +375,6 @@ async def update_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def edit_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Update custom gender in profile."""
     new_gender = update.message.text
     user_id = update.effective_user.id
     db = load_db()
@@ -428,12 +387,10 @@ async def edit_gender_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def edit_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle city edit."""
     await update.message.reply_text("Пожалуйста, введите новый город (или 'Any' для всех городов).")
     return EDIT_CITY
 
 async def update_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Update city in profile."""
     new_city = update.message.text.strip()
     user_id = update.effective_user.id
     db = load_db()
@@ -446,12 +403,10 @@ async def update_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle photo edit."""
     await update.message.reply_text("Пожалуйста, отправьте новую фотографию профиля.")
     return EDIT_PHOTO
 
 async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Update photo in profile."""
     if update.message.photo:
         new_photo_id = update.message.photo[-1].file_id
         user_id = update.effective_user.id
@@ -468,12 +423,10 @@ async def update_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return EDIT_PHOTO
 
 async def edit_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle bio edit."""
     await update.message.reply_text("Пожалуйста, введите новое описание профиля.")
     return EDIT_BIO
 
 async def update_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Update bio in profile."""
     new_bio = update.message.text
     user_id = update.effective_user.id
     db = load_db()
@@ -486,12 +439,10 @@ async def update_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def cancel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancel profile editing."""
     await update.message.reply_text("Редактирование профиля отменено.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
 async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Browse profiles sequentially with filters."""
     if update.callback_query:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -512,10 +463,7 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User profile: {user_profile}")
     blocked_ids = [b['blocked_id'] for b in db['blocked'] if b['blocker_id'] == user_id]
     logger.info(f"Blocked IDs for user {user_id}: {blocked_ids}")
-    profiles = [
-        u for u in db['users']
-        if u['telegram_id'] != user_id and u['telegram_id'] not in blocked_ids
-    ]
+    profiles = [u for u in db['users'] if u['telegram_id'] != user_id and u['telegram_id'] not in blocked_ids]
     logger.info(f"Profiles after filtering self and blocked: {len(profiles)}")
     if user_profile['age'] < 18:
         profiles = [u for u in profiles if u['age'] < 18]
@@ -536,7 +484,6 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_profile(update, context)
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Display a profile with options."""
     if update.message:
         chat_id = update.message.chat_id
     else:
@@ -569,7 +516,6 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id, f"Ошибка при отображении анкеты: {e}", reply_markup=get_main_menu())
 
 async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Return to the main menu."""
     query = update.callback_query
     await query.answer()
     chat_id = query.message.chat_id
@@ -578,7 +524,6 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id, "Выберите действие:", reply_markup=get_main_menu())
 
 async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle profile like and check for matches."""
     query = update.callback_query
     await query.answer()
     logger.info(f"Received like from user: {query.from_user.id} for user: {query.data}")
@@ -605,7 +550,6 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show next profile sequentially."""
     query = update.callback_query
     await query.answer()
     logger.info(f"Received next from user: {query.from_user.id}")
@@ -633,7 +577,6 @@ async def next_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start report process."""
     query = update.callback_query
     await query.answer()
     logger.info(f"Received report from user: {query.from_user.id} for user: {query.data}")
@@ -643,13 +586,11 @@ async def report_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GET_REPORT_REASON
 
 async def get_report_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle report reason and request a screenshot."""
     context.user_data['report_reason'] = update.message.text
     await update.message.reply_text("Пожалуйста, прикрепите скриншот, подтверждающий нарушение (например, переписка или анкета).")
     return GET_REPORT_SCREENSHOT
 
 async def get_report_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle screenshot for report and notify admin."""
     if not update.message.photo:
         await update.message.reply_text("Пожалуйста, отправьте скриншот в виде фотографии.")
         return GET_REPORT_SCREENSHOT
@@ -669,13 +610,14 @@ async def get_report_screenshot(update: Update, context: ContextTypes.DEFAULT_TY
         })
         db['blocked'].append({'blocker_id': reporter_user_id, 'blocked_id': reported_user_id})
         save_db(db)
-        await update.message.reply_text("Ваша жалоба принята и будет рассмотрена.", reply_markup=get_main_menu())
+        await update.message.reply_text("Ваша жалоба принята и будет рассмотрена.")
         if ADMIN_CHAT_ID:
             reporter_user = next((u for u in db['users'] if u['telegram_id'] == reporter_user_id), None)
             reported_user = next((u for u in db['users'] if u['telegram_id'] == reported_user_id), None)
             if reporter_user and reported_user:
                 keyboard = [
-                    [InlineKeyboardButton("Забанить", callback_data=f"ban_{reported_user_id}")]
+                    [InlineKeyboardButton("Забанить", callback_data=f"ban_{reported_user_id}")],
+                    [InlineKeyboardButton("Игнорировать жалобу", callback_data=f"ignore_{reported_user_id}")]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 reporter_link = f"tg://user?id={reporter_user_id}"
@@ -696,11 +638,10 @@ async def get_report_screenshot(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data.clear()
         return ConversationHandler.END
     else:
-        await update.message.reply_text("Произошла ошибка при обработке жалобы.", reply_markup=get_main_menu())
+        await update.message.reply_text("Произошла ошибка при обработке жалобы.")
         return ConversationHandler.END
 
 async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ban a user based on admin action."""
     query = update.callback_query
     await query.answer()
     logger.info(f"Received ban request from admin for user: {query.data}")
@@ -715,8 +656,15 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(f"Пользователь ID {user_id} не найден.")
     await query.message.delete()
 
+async def ignore_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    logger.info(f"Received ignore request for report on user: {query.data}")
+    user_id = int(query.data.split('_')[1])
+    await query.message.reply_text(f"Жалоба на пользователя ID {user_id} проигнорирована.")
+    await query.message.delete()
+
 async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start feedback process."""
     if update.callback_query:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -726,17 +674,17 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = update.message
 
+    logger.info(f"Starting feedback process for user: {update.effective_user.id}")
     await message.reply_text("Пожалуйста, опишите ваш отзыв, предложение или проблему.", reply_markup=ReplyKeyboardRemove())
     return GET_FEEDBACK_MESSAGE
 
 async def get_feedback_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle feedback message and ask for contact info."""
     context.user_data['feedback_message'] = update.message.text
+    logger.info(f"Received feedback message from user {update.effective_user.id}: {update.message.text}")
     await update.message.reply_text("Если вы хотите, чтобы мы связались с вами, укажите ваш контакт (например, Telegram @username). Если нет, просто напишите 'Нет'.")
     return GET_FEEDBACK_CONTACT
 
 async def get_feedback_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle feedback contact info and send to admin."""
     contact = update.message.text
     feedback_message = context.user_data.get('feedback_message')
     user_id = update.message.from_user.id
@@ -748,6 +696,7 @@ async def get_feedback_contact(update: Update, context: ContextTypes.DEFAULT_TYP
     }
     db['feedback'].append(feedback_entry)
     save_db(db)
+    logger.info(f"Feedback saved for user {user_id}")
     await update.message.reply_text("Спасибо за ваш отзыв! Мы рассмотрим его в ближайшее время.", reply_markup=get_main_menu())
     if ADMIN_CHAT_ID:
         user = next((u for u in db['users'] if u['telegram_id'] == user_id), None)
@@ -764,7 +713,6 @@ async def get_feedback_contact(update: Update, context: ContextTypes.DEFAULT_TYP
     return ConversationHandler.END
 
 async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show mutual matches with chat buttons."""
     if update.callback_query:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -775,10 +723,7 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     db = load_db()
-    user_matches = [
-        m for m in db['matches']
-        if m['user1_id'] == user_id or m['user2_id'] == user_id
-    ]
+    user_matches = [m for m in db['matches'] if m['user1_id'] == user_id or m['user2_id'] == user_id]
     if not user_matches:
         await context.bot.send_message(chat_id, "У вас пока нет мэтчей.", reply_markup=get_main_menu())
         return
@@ -794,7 +739,6 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id, message, reply_markup=reply_markup)
 
 async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle chat initiation."""
     query = update.callback_query
     await query.answer()
     matched_user_id = int(query.data.split('_')[1])
@@ -806,17 +750,14 @@ async def start_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Пользователь не найден.", reply_markup=get_main_menu())
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancel any conversation."""
     await update.message.reply_text("Операция отменена.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
-async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle unknown messages."""
-    logger.info(f"Received unknown message from user {update.effective_user.id}: {update.message.text}")
-    await update.message.reply_text("Извините, я не понимаю это сообщение. Пожалуйста, используйте команды из меню.", reply_markup=get_main_menu())
+async def ignore_non_admin_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"Ignoring message in admin chat from user {update.effective_user.id}: {update.message.text}")
+    return
 
 def main():
-    """Run the bot."""
     application = Application.builder().token(BOT_TOKEN).build()
     logger.info("Bot started")
 
@@ -870,7 +811,10 @@ def main():
     )
 
     feedback_handler = ConversationHandler(
-        entry_points=[CommandHandler("feedback", feedback_start)],
+        entry_points=[
+            CommandHandler("feedback", feedback_start),
+            CallbackQueryHandler(feedback_start, pattern='^menu_feedback$')
+        ],
         states={
             GET_FEEDBACK_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_feedback_message)],
             GET_FEEDBACK_CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_feedback_contact)],
@@ -878,7 +822,6 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)]
     )
 
-    # Prioritize handlers
     application.add_handler(register_handler)
     application.add_handler(edit_profile_handler)
     application.add_handler(report_handler)
@@ -893,7 +836,11 @@ def main():
     application.add_handler(CallbackQueryHandler(next_profile, pattern='^next$'))
     application.add_handler(CallbackQueryHandler(start_chat, pattern='^chat_'))
     application.add_handler(CallbackQueryHandler(ban_user, pattern='^ban_'))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
+    application.add_handler(CallbackQueryHandler(ignore_report, pattern='^ignore_'))
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.Chat(int(ADMIN_CHAT_ID)),
+        ignore_non_admin_messages
+    ))
 
     application.run_polling()
 
