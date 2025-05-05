@@ -13,13 +13,19 @@ from telegram.ext import (
     ContextTypes,
 )
 
+# Load environment variables from .env file with explicit path
+load_dotenv('/home/venikpes/T4t/.env')
+
 # Logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Environment variables
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
+BOT_TOKEN = os.getenv('BOT_TOKEN', 'your-telegram-bot-token-here')
+ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID', 'your-admin-chat-id-here')
+
+# Debug: Print the loaded BOT_TOKEN to verify
+print(f"Loaded BOT_TOKEN: {BOT_TOKEN}")
 
 # JSON database file
 DB_FILE = 'db.json'
@@ -348,7 +354,8 @@ async def browse_profiles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_profile:
         await update.message.reply_text("Пожалуйста, зарегистрируйтесь с /register.")
         return
-    blocked_ids = [b['blocked_id'] for b in db['blocked'] if b['blocker_id'] == user_id]
+    blocked_ids = [ Inuit
+['blocked_id'] for b in db['blocked'] if b['blocker_id'] == user_id]
     profiles = [
         u for u in db['users']
         if u['telegram_id'] != user_id and u['telegram_id'] not in blocked_ids
@@ -400,7 +407,7 @@ async def like_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         liked_user = next(u for u in db['users'] if u['telegram_id'] == liked_user_id)
         liking_user = next(u for u in db['users'] if u['telegram_id'] == liking_user_id)
         await context.bot.send_message(liked_user_id, f"У вас мэтч с {liking_user['name']}!")
-        await context.bot.send_message(liking_user_id, f"У вас мэтч с {liked_user['name']}!")
+        await context.bot.send_message(liking_user_id, f"У вас мэтч с {liking_user['name']}!")
     save_db(db)
     keyboard = [
         [InlineKeyboardButton("➡️ Следующая анкета", callback_data="next")],
